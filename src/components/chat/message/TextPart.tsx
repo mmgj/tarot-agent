@@ -1,6 +1,5 @@
 import React from 'react'
 import ReactMarkdown from 'react-markdown'
-import type {Element, Text} from 'hast'
 
 import {cn} from '@/lib/utils'
 
@@ -9,17 +8,95 @@ interface TextPartProps {
   isUser: boolean
 }
 
-function isImageOnlyParagraph(node: Element | undefined): boolean {
-  if (!node?.children) return false
-  const meaningful = node.children.filter(
-    (child) => !(child.type === 'text' && !(child as Text).value?.trim()),
-  )
-  return meaningful.length > 0 && meaningful.every((child) => (child as Element).tagName === 'img')
+// Match a line that is ONLY markdown images: ![alt](url) ![alt](url) ...
+const IMAGE_LINE_RE = /^(?:\s*!\[([^\]]*)\]\(([^)]+)\)\s*)+$/
+
+interface ImageRef {
+  alt: string
+  src: string
 }
 
-export function TextPart({text, isUser}: TextPartProps) {
-  if (!text.trim()) return null
+// Match individual images within a line
+const SINGLE_IMAGE_RE = /!\[([^\]]*)\]\(([^)]+)\)/g
 
+function parseImageLine(line: string): ImageRef[] {
+  const images: ImageRef[] = []
+  let match
+  while ((match = SINGLE_IMAGE_RE.exec(line)) !== null) {
+    images.push({alt: match[1], src: match[2]})
+  }
+  SINGLE_IMAGE_RE.lastIndex = 0
+  return images
+}
+
+interface Block {
+  type: 'text' | 'images'
+  content: string
+  images?: ImageRef[]
+}
+
+/**
+ * Split markdown text into blocks of text and image-only lines.
+ * Image lines are extracted so they can be rendered as plain HTML
+ * instead of going through ReactMarkdown (which causes nesting issues).
+ */
+function splitBlocks(text: string): Block[] {
+  const lines = text.split('\n')
+  const blocks: Block[] = []
+  let textBuffer: string[] = []
+
+  const flushText = () => {
+    if (textBuffer.length > 0) {
+      const content = textBuffer.join('\n').trim()
+      if (content) {
+        blocks.push({type: 'text', content})
+      }
+      textBuffer = []
+    }
+  }
+
+  for (const line of lines) {
+    if (IMAGE_LINE_RE.test(line.trim())) {
+      flushText()
+      blocks.push({
+        type: 'images',
+        content: line,
+        images: parseImageLine(line),
+      })
+    } else {
+      textBuffer.push(line)
+    }
+  }
+  flushText()
+
+  return blocks
+}
+
+function CardImages({images}: {images: ImageRef[]}) {
+  return (
+    <div className="my-4 flex flex-wrap items-end justify-center gap-4">
+      {images.map((img, i) => (
+        <div key={i} className="card-deal inline-flex flex-col items-center gap-2">
+          <div className="card-image overflow-hidden rounded-lg shadow-lg shadow-black/40">
+            <img
+              src={img.src}
+              alt={img.alt || 'Card image'}
+              className="h-auto w-36 object-contain sm:w-44"
+              loading="lazy"
+            />
+          </div>
+          {img.alt && (
+            <span className="font-serif text-xs font-medium tracking-wide text-neutral-400">
+              {img.alt}
+            </span>
+          )}
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function MarkdownBlock({text, isUser}: {text: string; isUser: boolean}) {
   return (
     <ReactMarkdown
       components={{
@@ -34,14 +111,7 @@ export function TextPart({text, isUser}: TextPartProps) {
             </a>
           )
         },
-        p: ({children, node}) => {
-          if (isImageOnlyParagraph(node as Element | undefined)) {
-            return (
-              <div className="my-4 flex flex-wrap items-end justify-center gap-4">{children}</div>
-            )
-          }
-          return <p className="whitespace-pre-wrap leading-relaxed">{children}</p>
-        },
+        p: ({children}) => <p className="whitespace-pre-wrap leading-relaxed">{children}</p>,
         ul: ({children}) => (
           <ul className="list-disc space-y-1 pl-5 marker:text-purple-500/50">{children}</ul>
         ),
@@ -71,25 +141,36 @@ export function TextPart({text, isUser}: TextPartProps) {
             {children}
           </blockquote>
         ),
+        // Fallback for any inline images that slip through
         img: ({src, alt}) => (
-          <span className="card-deal inline-flex flex-col items-center gap-2">
-            <span className="card-image inline-block overflow-hidden rounded-lg shadow-lg shadow-black/40">
-              <img
-                src={src}
-                alt={alt || 'Card image'}
-                className="h-auto w-36 object-contain sm:w-44"
-              />
-            </span>
-            {alt && alt !== 'Card image' && (
-              <span className="font-serif text-xs font-medium tracking-wide text-neutral-400">
-                {alt}
-              </span>
-            )}
-          </span>
+          <img
+            src={src}
+            alt={alt || 'Card image'}
+            className="my-2 inline-block h-auto w-36 rounded-lg object-contain shadow-lg shadow-black/40 sm:w-44"
+            loading="lazy"
+          />
         ),
       }}
     >
       {text}
     </ReactMarkdown>
+  )
+}
+
+export function TextPart({text, isUser}: TextPartProps) {
+  if (!text.trim()) return null
+
+  const blocks = splitBlocks(text)
+
+  return (
+    <div className="space-y-1">
+      {blocks.map((block, i) =>
+        block.type === 'images' && block.images ? (
+          <CardImages key={i} images={block.images} />
+        ) : (
+          <MarkdownBlock key={i} text={block.content} isUser={isUser} />
+        ),
+      )}
+    </div>
   )
 }
