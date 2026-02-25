@@ -7,6 +7,7 @@ import {cn} from '@/lib/utils'
 interface TextPartProps {
   text: string
   isUser: boolean
+  onSelectCard?: (title: string) => void
 }
 
 // Matches a COMPLETE markdown image: ![alt](url)
@@ -153,7 +154,7 @@ function MarkdownBlock({text, isUser}: {text: string; isUser: boolean}) {
   )
 }
 
-export function TextPart({text, isUser}: TextPartProps) {
+export function TextPart({text, isUser, onSelectCard}: TextPartProps) {
   if (!text.trim()) return null
 
   const {blocks} = splitBlocks(text)
@@ -162,7 +163,7 @@ export function TextPart({text, isUser}: TextPartProps) {
     <div className="space-y-1">
       {blocks.map((block, i) =>
         block.type === 'images' && block.cardTitles?.length ? (
-          <CardSpread key={`spread-${i}`} cardTitles={block.cardTitles} />
+          <CardSpread key={`spread-${i}`} cardTitles={block.cardTitles} onSelectCard={onSelectCard} />
         ) : block.type === 'text' ? (
           <MarkdownBlock key={`text-${i}`} text={block.content} isUser={isUser} />
         ) : null,

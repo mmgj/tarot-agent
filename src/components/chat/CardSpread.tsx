@@ -3,16 +3,16 @@
 import {ChevronLeft, ChevronRight} from 'lucide-react'
 import {useCallback, useEffect, useRef, useState} from 'react'
 
-import {CardDetail} from './CardDetail'
 import {CardImage} from './CardImage'
 import {CardList} from './CardList'
-import {DetailModal} from './DetailModal'
 import {formatCreators, type CardArtResult} from '@/lib/sanity-image'
-import {getCardSync, warmCardCache, type CachedCard} from '@/lib/card-cache'
+import {warmCardCache} from '@/lib/card-cache'
 
 interface CardSpreadProps {
   /** Card titles extracted from the markdown */
   cardTitles: string[]
+  /** Called when a card is clicked — opens it in the info panel */
+  onSelectCard?: (title: string) => void
 }
 
 interface DeckGroup {
@@ -24,13 +24,11 @@ interface DeckGroup {
 
 const DEFAULT_DECK = 'smith-waite'
 
-export function CardSpread({cardTitles}: CardSpreadProps) {
+export function CardSpread({cardTitles, onSelectCard}: CardSpreadProps) {
   const [decks, setDecks] = useState<DeckGroup[]>([])
   const [currentDeckIndex, setCurrentDeckIndex] = useState(0)
   const [allImagesLoaded, setAllImagesLoaded] = useState(false)
   const [error, setError] = useState(false)
-  const [cacheReady, setCacheReady] = useState(false)
-  const [selectedCard, setSelectedCard] = useState<string | null>(null)
   const loadedCount = useRef(0)
 
   // Stable key for the effect — prevents re-fetching on every streaming re-render
@@ -41,7 +39,7 @@ export function CardSpread({cardTitles}: CardSpreadProps) {
 
   // Warm the card cache on first mount
   useEffect(() => {
-    warmCardCache().then(() => setCacheReady(true)).catch(() => {})
+    warmCardCache().catch(() => {})
   }, [])
 
   // Fetch all art for these cards (all decks)
@@ -129,31 +127,46 @@ export function CardSpread({cardTitles}: CardSpreadProps) {
 
   if (error) return null
 
-  // ─── SINGLE CARD: Instant detail from cache ─────────────────
+  // ─── SINGLE CARD: Clickable thumbnail ─────────────────────────
 
   if (cardCount === 1) {
     const title = cardTitles[0]
-    const cached: CachedCard | null = cacheReady ? getCardSync(title) : null
+    const art = currentDeck?.cards.find((c) => c.cardTitle === title)
 
-    const deckVersions = currentDeck
-      ? decks.map((dg) => ({
-          slug: dg.slug,
-          name: dg.name,
-          creators: dg.creators,
-          art: dg.cards.find((c) => c.cardTitle === title) || dg.cards[0],
-        }))
-      : null
-
-    const apiCard = currentDeck?.cards.find((c) => c.cardTitle === title)
+    if (!art) {
+      // Loading placeholder
+      return (
+        <div className="my-2 inline-flex">
+          <button
+            type="button"
+            onClick={() => onSelectCard?.(title)}
+            className="card-deal inline-flex flex-col items-center gap-1 transition-transform hover:scale-105"
+          >
+            <div
+              className="relative overflow-hidden rounded-lg shadow-lg shadow-black/40"
+              style={{width: '80px', aspectRatio: '0.667'}}
+            >
+              <div className="shimmer absolute inset-0 bg-gradient-to-br from-neutral-800 via-neutral-700 to-neutral-800" />
+            </div>
+            <span className="font-serif text-[10px] font-medium text-neutral-400">{title}</span>
+          </button>
+        </div>
+      )
+    }
 
     return (
-      <CardDetail
-        cardTitle={title}
-        cached={cached}
-        deckVersions={deckVersions}
-        meta={apiCard?.cardMeta ?? cached?.meta ?? null}
-        initialDeckIndex={currentDeckIndex}
-      />
+      <div className="my-2 inline-flex">
+        <button
+          type="button"
+          onClick={() => onSelectCard?.(title)}
+          className="inline-flex flex-col items-center gap-1 transition-transform hover:scale-105"
+        >
+          <div style={{width: '80px'}}>
+            <CardImage art={art} width={80} />
+          </div>
+          <span className="font-serif text-[10px] font-medium text-neutral-400">{title}</span>
+        </button>
+      </div>
     )
   }
 
@@ -164,16 +177,16 @@ export function CardSpread({cardTitles}: CardSpreadProps) {
 
     if (isListLayout) {
       return (
-        <div className="my-4 flex flex-col gap-2">
+        <div className="my-2 flex flex-col gap-1.5">
           {cardTitles.map((title, i) => (
-            <div key={i} className="card-deal flex items-center gap-3 rounded-lg bg-neutral-900/50 p-2">
+            <div key={i} className="card-deal flex items-center gap-2 rounded-lg bg-neutral-900/50 p-1.5">
               <div
                 className="relative flex-shrink-0 overflow-hidden rounded shadow-md shadow-black/30"
-                style={{width: '60px', aspectRatio: '0.667'}}
+                style={{width: '40px', aspectRatio: '0.667'}}
               >
                 <div className="shimmer absolute inset-0 bg-gradient-to-br from-neutral-800 via-neutral-700 to-neutral-800" />
               </div>
-              <span className="font-serif text-sm font-medium tracking-wide text-neutral-300">
+              <span className="font-serif text-xs font-medium tracking-wide text-neutral-300">
                 {title}
               </span>
             </div>
@@ -183,19 +196,16 @@ export function CardSpread({cardTitles}: CardSpreadProps) {
     }
 
     return (
-      <div className="my-4 flex flex-wrap items-start justify-center gap-5">
+      <div className="my-2 flex flex-wrap items-start justify-center gap-3">
         {cardTitles.map((title, i) => (
-          <div key={i} className="card-deal inline-flex flex-col items-center gap-1.5">
+          <div key={i} className="card-deal inline-flex flex-col items-center gap-1">
             <div
               className="relative overflow-hidden rounded-lg shadow-lg shadow-black/40"
-              style={{width: '160px', aspectRatio: '0.667'}}
+              style={{width: '80px', aspectRatio: '0.667'}}
             >
               <div className="shimmer absolute inset-0 bg-gradient-to-br from-neutral-800 via-neutral-700 to-neutral-800" />
-              <div className="absolute inset-0 flex items-center justify-center text-2xl text-neutral-600 opacity-40">
-                ✦
-              </div>
             </div>
-            <span className="max-w-[10rem] text-center font-serif text-xs font-medium tracking-wide text-neutral-300">
+            <span className="max-w-[5rem] truncate text-center font-serif text-[10px] font-medium text-neutral-300">
               {title}
             </span>
           </div>
@@ -209,7 +219,7 @@ export function CardSpread({cardTitles}: CardSpreadProps) {
     .map((title) => currentDeck.cards.find((c) => c.cardTitle === title))
     .filter((c): c is CardArtResult => c != null)
 
-  // ─── 7+ CARDS: List view with click-to-detail modal ─────────
+  // ─── 7+ CARDS: List view ──────────────────────────────────────
 
   if (cardCount > 6) {
     const listCards = orderedCards.map((art) => ({
@@ -218,12 +228,8 @@ export function CardSpread({cardTitles}: CardSpreadProps) {
     }))
 
     return (
-      <div className="my-4 flex flex-col gap-4">
-        <CardList
-          cards={listCards}
-          deckGroups={decks}
-          currentDeckIndex={currentDeckIndex}
-        />
+      <div className="my-2 flex flex-col gap-3">
+        <CardList cards={listCards} onSelectCard={onSelectCard} />
 
         <DeckSelector
           decks={decks}
@@ -235,24 +241,24 @@ export function CardSpread({cardTitles}: CardSpreadProps) {
     )
   }
 
-  // ─── 2–6 CARDS: Spread view — clickable cards ───────────────
+  // ─── 2–6 CARDS: Spread view — clickable cards ─────────────────
 
   return (
-    <div className="my-4 flex flex-col items-center gap-4">
+    <div className="my-2 flex flex-col items-center gap-3">
       <div
-        className={`flex flex-wrap items-start justify-center gap-5 transition-opacity duration-500 ${
+        className={`flex flex-wrap items-start justify-center gap-3 transition-opacity duration-500 ${
           allImagesLoaded ? 'opacity-100' : 'opacity-0'
         }`}
-        style={{minHeight: allImagesLoaded ? undefined : '16rem'}}
+        style={{minHeight: allImagesLoaded ? undefined : '8rem'}}
       >
         {orderedCards.map((art, i) => (
           <button
             key={`${art.deckSlug}-${art.cardTitle}-${i}`}
             type="button"
-            onClick={() => setSelectedCard(art.cardTitle)}
+            onClick={() => onSelectCard?.(art.cardTitle)}
             className="cursor-pointer transition-transform hover:scale-105"
           >
-            <CardImage art={art} onLoad={handleImageLoad} />
+            <CardImage art={art} width={80} onLoad={handleImageLoad} />
           </button>
         ))}
       </div>
@@ -263,18 +269,6 @@ export function CardSpread({cardTitles}: CardSpreadProps) {
         onNavigate={navigateDeck}
         onSwitch={switchDeck}
       />
-
-      {/* Detail modal for clicked card */}
-      {selectedCard && (
-        <DetailModal
-          cardTitle={selectedCard}
-          art={currentDeck.cards.find((c) => c.cardTitle === selectedCard)}
-          meta={currentDeck.cards.find((c) => c.cardTitle === selectedCard)?.cardMeta ?? null}
-          deckGroups={decks}
-          currentDeckIndex={currentDeckIndex}
-          onClose={() => setSelectedCard(null)}
-        />
-      )}
     </div>
   )
 }
@@ -295,36 +289,36 @@ function DeckSelector({decks, currentDeckIndex, onNavigate, onSwitch}: DeckSelec
   if (decks.length <= 1) {
     return current.creators ? (
       <div className="flex flex-col items-center gap-0.5">
-        <span className="text-xs font-medium text-neutral-400">{current.name}</span>
-        <span className="text-[10px] text-neutral-500">{current.creators}</span>
+        <span className="text-[10px] font-medium text-neutral-400">{current.name}</span>
+        <span className="text-[9px] text-neutral-500">{current.creators}</span>
       </div>
     ) : null
   }
 
   return (
-    <div className="flex items-center gap-3">
+    <div className="flex items-center gap-2">
       <button
         type="button"
         onClick={() => onNavigate('prev')}
-        className="rounded-full p-1 text-neutral-500 transition-colors hover:bg-neutral-800 hover:text-neutral-300"
+        className="rounded-full p-0.5 text-neutral-500 transition-colors hover:bg-neutral-800 hover:text-neutral-300"
         aria-label="Previous deck"
       >
-        <ChevronLeft className="h-4 w-4" />
+        <ChevronLeft className="h-3.5 w-3.5" />
       </button>
 
       <div className="flex flex-col items-center gap-0.5">
-        <span className="text-xs font-medium text-neutral-300">{current.name}</span>
+        <span className="text-[10px] font-medium text-neutral-300">{current.name}</span>
         {current.creators && (
-          <span className="text-[10px] text-neutral-500">{current.creators}</span>
+          <span className="text-[9px] text-neutral-500">{current.creators}</span>
         )}
-        <div className="mt-1 flex gap-1">
+        <div className="mt-0.5 flex gap-1">
           {decks.map((deck, i) => (
             <button
               key={deck.slug}
               type="button"
               onClick={() => onSwitch(i)}
               className={`h-1 rounded-full transition-all ${
-                i === currentDeckIndex ? 'w-3 bg-purple-400' : 'w-1 bg-neutral-600 hover:bg-neutral-500'
+                i === currentDeckIndex ? 'w-2.5 bg-purple-400' : 'w-1 bg-neutral-600 hover:bg-neutral-500'
               }`}
               aria-label={`View in ${deck.name}`}
             />
@@ -335,7 +329,7 @@ function DeckSelector({decks, currentDeckIndex, onNavigate, onSwitch}: DeckSelec
       <button
         type="button"
         onClick={() => onNavigate('next')}
-        className="rounded-full p-1 text-neutral-500 transition-colors hover:bg-neutral-800 hover:text-neutral-300"
+        className="rounded-full p-0.5 text-neutral-500 transition-colors hover:bg-neutral-800 hover:text-neutral-300"
         aria-label="Next deck"
       >
         <ChevronRight className="h-4 w-4" />
