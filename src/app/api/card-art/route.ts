@@ -1,6 +1,6 @@
 import {NextRequest, NextResponse} from 'next/server'
 
-// These are the same Sanity project as tarotify — public dataset, read-only
+// Same Sanity project as tarotify — public dataset, read-only CDN
 const PROJECT_ID = 'mzfc5dty'
 const DATASET = 'semantic'
 
@@ -10,10 +10,20 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({error: 'title parameter required'}, {status: 400})
   }
 
+  // Fetch full image metadata: dimensions, crop, hotspot — same as tarotify uses
   const query = `*[_type == "cardArt" && card->title == $title]{
     "deckName": deck->title,
     "deckId": deck->_id,
-    "imageUrl": image.asset->url
+    "deckSlug": deck->slug.current,
+    "cornerRounding": deck->cornerRounding,
+    "imageUrl": image.asset->url,
+    "dimensions": image.asset->metadata.dimensions {
+      width,
+      height,
+      aspectRatio
+    },
+    "crop": image.crop,
+    "hotspot": image.hotspot
   } | order(deckName asc)`
 
   const apiUrl = new URL(`https://${PROJECT_ID}.api.sanity.io/v2024-01-01/data/query/${DATASET}`)
@@ -35,11 +45,27 @@ export async function GET(req: NextRequest) {
     const data = await response.json()
     const versions = (data.result || [])
       .filter((v: {imageUrl?: string}) => v.imageUrl)
-      .map((v: {deckName: string; deckId: string; imageUrl: string}) => ({
-        deckName: v.deckName,
-        deckId: v.deckId,
-        imageUrl: `${v.imageUrl}?w=400`,
-      }))
+      .map(
+        (v: {
+          deckName: string
+          deckId: string
+          deckSlug: string
+          cornerRounding?: number
+          imageUrl: string
+          dimensions?: {width: number; height: number; aspectRatio: number}
+          crop?: {top: number; left: number; bottom: number; right: number}
+          hotspot?: {x: number; y: number; width?: number; height?: number}
+        }) => ({
+          deckName: v.deckName,
+          deckId: v.deckId,
+          deckSlug: v.deckSlug,
+          cornerRounding: v.cornerRounding ?? 0,
+          imageUrl: v.imageUrl,
+          dimensions: v.dimensions || null,
+          crop: v.crop || null,
+          hotspot: v.hotspot || null,
+        }),
+      )
 
     return NextResponse.json(
       {cardTitle: title, versions},

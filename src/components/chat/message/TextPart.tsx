@@ -1,4 +1,4 @@
-import React from 'react'
+import React, {useCallback, useRef, useState} from 'react'
 import ReactMarkdown from 'react-markdown'
 
 import {CardImage} from '@/components/chat/CardImage'
@@ -67,11 +67,32 @@ function splitBlocks(text: string): Block[] {
   return blocks
 }
 
+/**
+ * CardSpread buffers rendering until ALL card images have loaded.
+ * This prevents layout shift as images pop in one by one.
+ */
 function CardSpread({images}: {images: ImageRef[]}) {
+  const [allReady, setAllReady] = useState(false)
+  const readyCount = useRef(0)
+  const total = images.length
+
+  const handleReady = useCallback(() => {
+    readyCount.current += 1
+    if (readyCount.current >= total) {
+      setAllReady(true)
+    }
+  }, [total])
+
   return (
-    <div className="my-4 flex flex-wrap items-start justify-center gap-5">
+    <div
+      className={`my-4 flex flex-wrap items-start justify-center gap-5 transition-opacity duration-500 ${
+        allReady ? 'opacity-100' : 'opacity-0'
+      }`}
+      // Reserve minimum height while loading to prevent collapse
+      style={{minHeight: allReady ? undefined : '16rem'}}
+    >
       {images.map((img, i) => (
-        <CardImage key={i} src={img.src} alt={img.alt} />
+        <CardImage key={`${img.alt}-${i}`} alt={img.alt} onReady={handleReady} />
       ))}
     </div>
   )
@@ -123,7 +144,7 @@ function MarkdownBlock({text, isUser}: {text: string; isUser: boolean}) {
           </blockquote>
         ),
         // Fallback for inline images that weren't extracted
-        img: ({src = '', alt = ''}) => <CardImage src={String(src)} alt={String(alt)} />,
+        img: ({alt = ''}) => <CardImage alt={String(alt)} />,
       }}
     >
       {text}

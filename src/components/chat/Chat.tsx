@@ -25,6 +25,13 @@ function isWaitingForText(messages: UIMessage[]): boolean {
   return !(lastPart.type === 'text' && lastPart.text.trim().length > 0)
 }
 
+/** Check if the last assistant message has any tool call parts */
+function hasActiveToolCalls(messages: UIMessage[]): boolean {
+  const last = messages[messages.length - 1]
+  if (!last || last.role !== 'assistant') return false
+  return (last.parts ?? []).some(isToolUIPart)
+}
+
 const SUGGESTIONS = [
   'Draw three cards for me',
   'Tell me about The Tower',
@@ -59,6 +66,7 @@ export function Chat({debug = false}: ChatProps) {
 
   const isLoading = status === 'submitted' || status === 'streaming'
   const showLoader = isLoading && isWaitingForText(messages)
+  const toolCallsActive = hasActiveToolCalls(messages)
 
   return (
     <div className="flex h-full flex-col">
@@ -130,7 +138,7 @@ export function Chat({debug = false}: ChatProps) {
             {showLoader && (
               <div className="message-enter flex justify-start">
                 <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-sm">
-                  <Loader />
+                  <Loader hasToolCalls={toolCallsActive} />
                 </div>
               </div>
             )}
