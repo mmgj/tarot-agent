@@ -1,6 +1,7 @@
 import React from 'react'
 import ReactMarkdown from 'react-markdown'
 
+import {CardImage} from '@/components/chat/CardImage'
 import {cn} from '@/lib/utils'
 
 interface TextPartProps {
@@ -16,7 +17,6 @@ interface ImageRef {
   src: string
 }
 
-// Match individual images within a line
 const SINGLE_IMAGE_RE = /!\[([^\]]*)\]\(([^)]+)\)/g
 
 function parseImageLine(line: string): ImageRef[] {
@@ -35,11 +35,6 @@ interface Block {
   images?: ImageRef[]
 }
 
-/**
- * Split markdown text into blocks of text and image-only lines.
- * Image lines are extracted so they can be rendered as plain HTML
- * instead of going through ReactMarkdown (which causes nesting issues).
- */
 function splitBlocks(text: string): Block[] {
   const lines = text.split('\n')
   const blocks: Block[] = []
@@ -72,25 +67,11 @@ function splitBlocks(text: string): Block[] {
   return blocks
 }
 
-function CardImages({images}: {images: ImageRef[]}) {
+function CardSpread({images}: {images: ImageRef[]}) {
   return (
-    <div className="my-4 flex flex-wrap items-end justify-center gap-4">
+    <div className="my-4 flex flex-wrap items-start justify-center gap-5">
       {images.map((img, i) => (
-        <div key={i} className="card-deal inline-flex flex-col items-center gap-2">
-          <div className="card-image overflow-hidden rounded-lg shadow-lg shadow-black/40">
-            <img
-              src={img.src}
-              alt={img.alt || 'Card image'}
-              className="h-auto w-36 object-contain sm:w-44"
-              loading="lazy"
-            />
-          </div>
-          {img.alt && (
-            <span className="font-serif text-xs font-medium tracking-wide text-neutral-400">
-              {img.alt}
-            </span>
-          )}
-        </div>
+        <CardImage key={i} src={img.src} alt={img.alt} />
       ))}
     </div>
   )
@@ -141,15 +122,8 @@ function MarkdownBlock({text, isUser}: {text: string; isUser: boolean}) {
             {children}
           </blockquote>
         ),
-        // Fallback for any inline images that slip through
-        img: ({src, alt}) => (
-          <img
-            src={src}
-            alt={alt || 'Card image'}
-            className="my-2 inline-block h-auto w-36 rounded-lg object-contain shadow-lg shadow-black/40 sm:w-44"
-            loading="lazy"
-          />
-        ),
+        // Fallback for inline images that weren't extracted
+        img: ({src = '', alt = ''}) => <CardImage src={String(src)} alt={String(alt)} />,
       }}
     >
       {text}
@@ -166,7 +140,7 @@ export function TextPart({text, isUser}: TextPartProps) {
     <div className="space-y-1">
       {blocks.map((block, i) =>
         block.type === 'images' && block.images ? (
-          <CardImages key={i} images={block.images} />
+          <CardSpread key={i} images={block.images} />
         ) : (
           <MarkdownBlock key={i} text={block.content} isUser={isUser} />
         ),
