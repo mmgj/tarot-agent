@@ -85,23 +85,48 @@ function applyCropToUrl(
   return `${url}${sep}rect=${x},${y},${w},${h}`
 }
 
-/** Get the aspect ratio of the cropped region. */
-export function getCroppedAspectRatio(art: CardArtResult): number {
-  const dims = art.dimensions
-  if (!dims) return 2 / 3 // Fallback for tarot cards
-
-  if (hasCrop(art.crop)) {
-    const croppedW = dims.width * (1 - art.crop.left - art.crop.right)
-    const croppedH = dims.height * (1 - art.crop.top - art.crop.bottom)
-    return croppedW / croppedH
+/** Get the aspect ratio of the cropped region (raw params). */
+export function getCroppedAspectRatio(
+  widthOrArt: number | CardArtResult,
+  height?: number,
+  crop?: ImageCrop | null,
+): number {
+  // Overload: accept CardArtResult directly
+  if (typeof widthOrArt === 'object') {
+    const art = widthOrArt
+    const dims = art.dimensions
+    if (!dims) return 2 / 3
+    return getCroppedAspectRatio(dims.width, dims.height, art.crop)
   }
 
-  return dims.aspectRatio ?? dims.width / dims.height
+  const w = widthOrArt
+  const h = height!
+  if (hasCrop(crop)) {
+    const croppedW = w * (1 - crop.left - crop.right)
+    const croppedH = h * (1 - crop.top - crop.bottom)
+    return croppedW / croppedH
+  }
+  return w / h
 }
 
 /** Build a complete image URL with crop and width. */
-export function buildImageUrl(art: CardArtResult, width = 400): string {
-  let url = applyCropToUrl(art.imageUrl, art.crop, art.dimensions)
+export function buildImageUrl(
+  artOrUrl: string | CardArtResult,
+  widthOrOpts?: number | {width?: number; crop?: ImageCrop | null; dimensions?: ImageDimensions | null},
+): string {
+  // Overload: accept CardArtResult directly
+  if (typeof artOrUrl === 'object') {
+    const art = artOrUrl
+    const width = typeof widthOrOpts === 'number' ? widthOrOpts : 400
+    const url = applyCropToUrl(art.imageUrl, art.crop, art.dimensions)
+    const sep = url.includes('?') ? '&' : '?'
+    return `${url}${sep}w=${width}&q=80&fit=clip`
+  }
+
+  // Raw URL + options
+  const opts = typeof widthOrOpts === 'object' ? widthOrOpts : {width: widthOrOpts}
+  const width = opts.width || 400
+  const url = applyCropToUrl(artOrUrl, opts.crop, opts.dimensions)
   const sep = url.includes('?') ? '&' : '?'
   return `${url}${sep}w=${width}&q=80&fit=clip`
 }

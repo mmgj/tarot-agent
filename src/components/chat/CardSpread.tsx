@@ -6,7 +6,8 @@ import {useCallback, useEffect, useRef, useState} from 'react'
 import {CardDetail} from './CardDetail'
 import {CardImage} from './CardImage'
 import {CardList} from './CardList'
-import {formatCreators, type CardArtResult, type CardMeta} from '@/lib/sanity-image'
+import {formatCreators, type CardArtResult} from '@/lib/sanity-image'
+import {getCardSync, warmCardCache, type CachedCard} from '@/lib/card-cache'
 
 interface CardSpreadProps {
   /** Card titles extracted from the markdown */
@@ -27,6 +28,7 @@ export function CardSpread({cardTitles}: CardSpreadProps) {
   const [currentDeckIndex, setCurrentDeckIndex] = useState(0)
   const [allImagesLoaded, setAllImagesLoaded] = useState(false)
   const [error, setError] = useState(false)
+  const [cacheReady, setCacheReady] = useState(false)
   const loadedCount = useRef(0)
 
   // Stable key for the effect — prevents re-fetching on every streaming re-render
@@ -35,60 +37,60 @@ export function CardSpread({cardTitles}: CardSpreadProps) {
   // Track the last fetched key to avoid redundant fetches
   const lastFetchedKey = useRef('')
 
+  // Warm the card cache on first mount
+  useEffect(() => {
+    warmCardCache().then(() => setCacheReady(true)).catch(() => {})
+  }, [])
+
   // Fetch all art for these cards (all decks)
   // Debounce by 300ms so we don't re-fetch on every streaming token.
-  // During streaming, cardTitles grows as new image lines arrive —
-  // we wait for a pause before hitting the API.
   useEffect(() => {
     if (!titlesKey) return
-    // Skip if we already fetched this exact set
     if (titlesKey === lastFetchedKey.current) return
 
     const controller = new AbortController()
     const timer = setTimeout(() => {
       lastFetchedKey.current = titlesKey
 
-    fetch(`/api/card-art?titles=${encodeURIComponent(titlesKey)}`, {signal: controller.signal})
-      .then((r) => (r.ok ? r.json() : null))
-      .then((data) => {
-        if (!data?.cards?.length) {
-          setError(true)
-          return
-        }
-
-        // Group by deck
-        const byDeck = new Map<string, DeckGroup>()
-        for (const card of data.cards as CardArtResult[]) {
-          if (!byDeck.has(card.deckSlug)) {
-            byDeck.set(card.deckSlug, {
-              slug: card.deckSlug,
-              name: card.deckName,
-              creators: formatCreators(card.creators),
-              cards: [],
-            })
+      fetch(`/api/card-art?titles=${encodeURIComponent(titlesKey)}`, {signal: controller.signal})
+        .then((r) => (r.ok ? r.json() : null))
+        .then((data) => {
+          if (!data?.cards?.length) {
+            setError(true)
+            return
           }
-          byDeck.get(card.deckSlug)!.cards.push(card)
-        }
 
-        // Only include decks that have ALL the requested cards
-        const completeDeckGroups = Array.from(byDeck.values())
-          .filter((g) => g.cards.length >= cardTitles.length)
-          .sort((a, b) => a.name.localeCompare(b.name))
+          // Group by deck
+          const byDeck = new Map<string, DeckGroup>()
+          for (const card of data.cards as CardArtResult[]) {
+            if (!byDeck.has(card.deckSlug)) {
+              byDeck.set(card.deckSlug, {
+                slug: card.deckSlug,
+                name: card.deckName,
+                creators: formatCreators(card.creators),
+                cards: [],
+              })
+            }
+            byDeck.get(card.deckSlug)!.cards.push(card)
+          }
 
-        setDecks(completeDeckGroups)
+          // Only include decks that have ALL the requested cards
+          const completeDeckGroups = Array.from(byDeck.values())
+            .filter((g) => g.cards.length >= cardTitles.length)
+            .sort((a, b) => a.name.localeCompare(b.name))
 
-        // Default to Smith-Waite, fall back to first available
-        const defaultIdx = completeDeckGroups.findIndex((g) => g.slug === DEFAULT_DECK)
-        if (defaultIdx >= 0) setCurrentDeckIndex(defaultIdx)
-      })
-      .catch((err) => {
-        // Don't set error on abort — that's just cleanup from re-render
-        if (err?.name !== 'AbortError') {
-          setError(true)
-        }
-      })
+          setDecks(completeDeckGroups)
 
-    }, 300) // debounce
+          // Default to Smith-Waite, fall back to first available
+          const defaultIdx = completeDeckGroups.findIndex((g) => g.slug === DEFAULT_DECK)
+          if (defaultIdx >= 0) setCurrentDeckIndex(defaultIdx)
+        })
+        .catch((err) => {
+          if (err?.name !== 'AbortError') {
+            setError(true)
+          }
+        })
+    }, 300)
 
     return () => {
       clearTimeout(timer)
@@ -97,7 +99,6 @@ export function CardSpread({cardTitles}: CardSpreadProps) {
   }, [titlesKey]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const currentDeck = decks[currentDeckIndex]
-  const hasMultipleDecks = decks.length > 1
   const cardCount = cardTitles.length
 
   const handleImageLoad = useCallback(() => {
@@ -107,7 +108,6 @@ export function CardSpread({cardTitles}: CardSpreadProps) {
     }
   }, [currentDeck])
 
-  // Reset load state when switching decks
   const switchDeck = useCallback((newIndex: number) => {
     loadedCount.current = 0
     setAllImagesLoaded(false)
@@ -131,13 +131,40 @@ export function CardSpread({cardTitles}: CardSpreadProps) {
 
   if (error) return null
 
-  // Show card name placeholders immediately while loading.
-  // Match the layout to the expected view mode so there's no jump when data arrives.
+  // ─── SINGLE CARD: Instant detail from cache ─────────────────
+
+  if (cardCount === 1) {
+    const title = cardTitles[0]
+    const cached: CachedCard | null = cacheReady ? getCardSync(title) : null
+
+    // Build deck versions if API data is ready
+    const deckVersions = currentDeck
+      ? decks.map((dg) => ({
+          slug: dg.slug,
+          name: dg.name,
+          creators: dg.creators,
+          art: dg.cards.find((c) => c.cardTitle === title) || dg.cards[0],
+        }))
+      : null
+
+    const apiCard = currentDeck?.cards.find((c) => c.cardTitle === title)
+
+    return (
+      <CardDetail
+        cached={cached}
+        deckVersions={deckVersions}
+        meta={apiCard?.cardMeta ?? cached?.meta ?? null}
+        initialDeckIndex={currentDeckIndex}
+      />
+    )
+  }
+
+  // ─── LOADING: Show placeholders matching expected layout ─────
+
   if (!currentDeck) {
     const isListLayout = cardCount > 5
 
     if (isListLayout) {
-      // List-style placeholders: compact horizontal rows
       return (
         <div className="my-4 flex flex-col gap-2">
           {cardTitles.map((title, i) => (
@@ -157,7 +184,6 @@ export function CardSpread({cardTitles}: CardSpreadProps) {
       )
     }
 
-    // Spread-style placeholders: horizontal cards
     return (
       <div className="my-4 flex flex-wrap items-start justify-center gap-5">
         {cardTitles.map((title, i) => (
@@ -185,28 +211,8 @@ export function CardSpread({cardTitles}: CardSpreadProps) {
     .map((title) => currentDeck.cards.find((c) => c.cardTitle === title))
     .filter((c): c is CardArtResult => c != null)
 
-  // ─── VIEW SELECTION ───────────────────────────────────────────
+  // ─── 5+ CARDS: List view with click-to-detail modal ─────────
 
-  // 1 card → Detail view with deck carousel and metadata
-  if (cardCount === 1 && orderedCards.length === 1) {
-    const card = orderedCards[0]
-    const deckVersions = decks.map((dg) => ({
-      slug: dg.slug,
-      name: dg.name,
-      creators: dg.creators,
-      art: dg.cards.find((c) => c.cardTitle === card.cardTitle) || dg.cards[0],
-    }))
-
-    return (
-      <CardDetail
-        deckVersions={deckVersions}
-        meta={card.cardMeta ?? null}
-        initialDeckIndex={currentDeckIndex}
-      />
-    )
-  }
-
-  // 5+ cards → List view with compact rows
   if (cardCount > 5) {
     const listCards = orderedCards.map((art) => ({
       art,
@@ -215,9 +221,12 @@ export function CardSpread({cardTitles}: CardSpreadProps) {
 
     return (
       <div className="my-4 flex flex-col gap-4">
-        <CardList cards={listCards} />
+        <CardList
+          cards={listCards}
+          deckGroups={decks}
+          currentDeckIndex={currentDeckIndex}
+        />
 
-        {/* Deck selector */}
         <DeckSelector
           decks={decks}
           currentDeckIndex={currentDeckIndex}
@@ -228,10 +237,10 @@ export function CardSpread({cardTitles}: CardSpreadProps) {
     )
   }
 
-  // 2–5 cards → Spread view (horizontal layout)
+  // ─── 2–5 CARDS: Spread view (horizontal layout) ─────────────
+
   return (
     <div className="my-4 flex flex-col items-center gap-4">
-      {/* Cards */}
       <div
         className={`flex flex-wrap items-start justify-center gap-5 transition-opacity duration-500 ${
           allImagesLoaded ? 'opacity-100' : 'opacity-0'
@@ -243,7 +252,6 @@ export function CardSpread({cardTitles}: CardSpreadProps) {
         ))}
       </div>
 
-      {/* Deck selector */}
       <DeckSelector
         decks={decks}
         currentDeckIndex={currentDeckIndex}
@@ -268,7 +276,6 @@ function DeckSelector({decks, currentDeckIndex, onNavigate, onSwitch}: DeckSelec
   if (!current) return null
 
   if (decks.length <= 1) {
-    // Single deck — just show name
     return current.creators ? (
       <div className="flex flex-col items-center gap-0.5">
         <span className="text-xs font-medium text-neutral-400">{current.name}</span>

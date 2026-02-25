@@ -4,28 +4,61 @@ import {ChevronLeft, ChevronRight} from 'lucide-react'
 import {useCallback, useRef, useState} from 'react'
 
 import {CardImage} from './CardImage'
-import {type CardArtResult, type CardMeta} from '@/lib/sanity-image'
+import {
+  buildImageUrl,
+  getCroppedAspectRatio,
+  getScaledBorderRadius,
+  type CardArtResult,
+  type CardMeta,
+  type ImageCrop,
+} from '@/lib/sanity-image'
+import {type CachedCard} from '@/lib/card-cache'
+
+// ─── Types ──────────────────────────────────────────────────────
+
+interface DeckVersion {
+  slug: string
+  name: string
+  creators: string
+  art: CardArtResult
+}
 
 interface CardDetailProps {
-  /** All art versions for this card, grouped by deck */
-  deckVersions: {slug: string; name: string; creators: string; art: CardArtResult}[]
-  /** Card metadata from Sanity */
+  /** Cached card data for instant render (Smith-Waite + metadata) */
+  cached: CachedCard | null
+  /** All deck versions — null while loading, empty array if failed */
+  deckVersions: DeckVersion[] | null
+  /** Card metadata (from cache or API) */
   meta: CardMeta | null
-  /** Initial deck index (default: 0) */
+  /** Initial deck index when deckVersions arrive */
   initialDeckIndex?: number
 }
+
+// ─── Helpers ────────────────────────────────────────────────────
 
 function capitalize(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1)
 }
 
-export function CardDetail({deckVersions, meta, initialDeckIndex = 0}: CardDetailProps) {
+const SWIPE_THRESHOLD = 50
+
+// ─── Component ──────────────────────────────────────────────────
+
+export function CardDetail({cached, deckVersions, meta, initialDeckIndex = 0}: CardDetailProps) {
   const [deckIndex, setDeckIndex] = useState(initialDeckIndex)
   const [imageLoaded, setImageLoaded] = useState(false)
+  const [swipeOffset, setSwipeOffset] = useState(0)
+  const [isAnimating, setIsAnimating] = useState(false)
   const loadedRef = useRef(false)
+  const touchStartX = useRef<number | null>(null)
+  const containerRef = useRef<HTMLDivElement>(null)
 
-  const current = deckVersions[deckIndex]
-  const hasMultiple = deckVersions.length > 1
+  const hasCarousel = deckVersions && deckVersions.length > 1
+  const current = deckVersions?.[deckIndex]
+
+  // Use cached Smith-Waite data for instant render, upgrade when API data arrives
+  const displayMeta = meta || cached?.meta || null
+  const cachedArt = cached?.smithWaite
 
   const handleLoad = useCallback(() => {
     if (!loadedRef.current) {
@@ -40,41 +73,171 @@ export function CardDetail({deckVersions, meta, initialDeckIndex = 0}: CardDetai
     setDeckIndex(newIndex)
   }, [])
 
-  const navigate = useCallback(
-    (dir: 'prev' | 'next') => {
-      const len = deckVersions.length
-      switchDeck(dir === 'prev' ? (deckIndex - 1 + len) % len : (deckIndex + 1) % len)
+  // ─── Swipe handlers (adapted from tarotify) ─────────────────
+
+  const handleTouchStart = useCallback(
+    (e: React.TouchEvent) => {
+      if (isAnimating || !hasCarousel) return
+      touchStartX.current = e.touches[0].clientX
     },
-    [deckIndex, deckVersions.length, switchDeck],
+    [isAnimating, hasCarousel],
   )
 
-  if (!current) return null
+  const handleTouchMove = useCallback(
+    (e: React.TouchEvent) => {
+      if (touchStartX.current === null || isAnimating) return
+      const diff = e.touches[0].clientX - touchStartX.current
+      setSwipeOffset(diff * 0.8)
+    },
+    [isAnimating],
+  )
 
-  // Build correspondences line
+  const handleTouchEnd = useCallback(() => {
+    if (touchStartX.current === null || !hasCarousel || !deckVersions) return
+
+    const containerWidth = containerRef.current?.offsetWidth || 300
+
+    if (Math.abs(swipeOffset) > SWIPE_THRESHOLD) {
+      setIsAnimating(true)
+      const goNext = swipeOffset < 0
+      setSwipeOffset(goNext ? -containerWidth : containerWidth)
+      setTimeout(() => {
+        setDeckIndex((prev) =>
+          goNext
+            ? prev < deckVersions.length - 1 ? prev + 1 : 0
+            : prev > 0 ? prev - 1 : deckVersions.length - 1,
+        )
+        setSwipeOffset(0)
+        setIsAnimating(false)
+      }, 250)
+    } else {
+      setSwipeOffset(0)
+    }
+
+    touchStartX.current = null
+  }, [swipeOffset, hasCarousel, deckVersions])
+
+  const navigate = useCallback(
+    (dir: 'prev' | 'next') => {
+      if (isAnimating || !hasCarousel || !deckVersions) return
+      const containerWidth = containerRef.current?.offsetWidth || 300
+      setIsAnimating(true)
+      setSwipeOffset(dir === 'next' ? -containerWidth : containerWidth)
+      setTimeout(() => {
+        setDeckIndex((prev) =>
+          dir === 'next'
+            ? prev < deckVersions.length - 1 ? prev + 1 : 0
+            : prev > 0 ? prev - 1 : deckVersions.length - 1,
+        )
+        setSwipeOffset(0)
+        setIsAnimating(false)
+      }, 250)
+    },
+    [isAnimating, hasCarousel, deckVersions],
+  )
+
+  // ─── Build correspondences ──────────────────────────────────
+
   const corr: string[] = []
-  if (meta?.arcana) corr.push(capitalize(meta.arcana))
-  if (meta?.element) corr.push(capitalize(meta.element))
-  if (meta?.astrology) corr.push(capitalize(meta.astrology))
-  if (meta?.hebrewLetter) corr.push(capitalize(meta.hebrewLetter))
+  if (displayMeta?.arcana) corr.push(capitalize(displayMeta.arcana))
+  if (displayMeta?.element) corr.push(capitalize(displayMeta.element))
+  if (displayMeta?.astrology) corr.push(capitalize(displayMeta.astrology))
+  if (displayMeta?.hebrewLetter) corr.push(capitalize(displayMeta.hebrewLetter))
+
+  // ─── Adjacent indices for carousel ──────────────────────────
+
+  const prevIndex = deckVersions
+    ? deckIndex > 0 ? deckIndex - 1 : deckVersions.length - 1
+    : 0
+  const nextIndex = deckVersions
+    ? deckIndex < deckVersions.length - 1 ? deckIndex + 1 : 0
+    : 0
+
+  // ─── Render ─────────────────────────────────────────────────
 
   return (
     <div className="my-4">
       {/* Floated image + deck nav */}
       <div className="float-left mr-4 mb-3 flex flex-col items-center gap-2">
+        {/* Image area */}
         <div
-          className={`transition-opacity duration-500 ${imageLoaded ? 'opacity-100' : 'opacity-0'}`}
-          style={{minHeight: imageLoaded ? undefined : '20rem'}}
+          ref={containerRef}
+          className="relative overflow-hidden"
+          style={{width: '200px', minHeight: '20rem'}}
+          onTouchStart={handleTouchStart}
+          onTouchMove={handleTouchMove}
+          onTouchEnd={handleTouchEnd}
         >
-          <CardImage
-            key={`${current.slug}-${current.art.cardTitle}`}
-            art={current.art}
-            width={200}
-            onLoad={handleLoad}
-          />
+          {hasCarousel ? (
+            /* ─── Swipeable carousel (Phase 2) ─── */
+            <div
+              className="flex items-start justify-center"
+              style={{
+                transform: `translateX(${swipeOffset}px)`,
+                transition: isAnimating ? 'transform 250ms ease-out' : 'none',
+              }}
+            >
+              {/* Previous image (off-screen left) */}
+              {deckVersions[prevIndex] && (
+                <div
+                  className="absolute inset-0 flex items-start justify-center"
+                  style={{transform: 'translateX(-100%)'}}
+                >
+                  <CardImage art={deckVersions[prevIndex].art} width={200} />
+                </div>
+              )}
+
+              {/* Current image */}
+              {current && (
+                <div className="flex items-start justify-center">
+                  <CardImage
+                    key={`${current.slug}-${current.art.cardTitle}`}
+                    art={current.art}
+                    width={200}
+                    onLoad={handleLoad}
+                  />
+                </div>
+              )}
+
+              {/* Next image (off-screen right) */}
+              {deckVersions[nextIndex] && (
+                <div
+                  className="absolute inset-0 flex items-start justify-center"
+                  style={{transform: 'translateX(100%)'}}
+                >
+                  <CardImage art={deckVersions[nextIndex].art} width={200} />
+                </div>
+              )}
+            </div>
+          ) : current ? (
+            /* ─── Single deck image (API loaded, no carousel) ─── */
+            <div className={`transition-opacity duration-500 ${imageLoaded ? 'opacity-100' : 'opacity-0'}`}>
+              <CardImage
+                key={`${current.slug}-${current.art.cardTitle}`}
+                art={current.art}
+                width={200}
+                onLoad={handleLoad}
+              />
+            </div>
+          ) : cachedArt?.imageUrl ? (
+            /* ─── Cached Smith-Waite image (Phase 1 — instant) ─── */
+            <CachedImage art={cachedArt} onLoad={handleLoad} loaded={imageLoaded} />
+          ) : (
+            /* ─── Shimmer placeholder ─── */
+            <div
+              className="relative overflow-hidden rounded-lg shadow-lg shadow-black/40"
+              style={{width: '200px', aspectRatio: '0.667'}}
+            >
+              <div className="shimmer absolute inset-0 bg-gradient-to-br from-neutral-800 via-neutral-700 to-neutral-800" />
+              <div className="absolute inset-0 flex items-center justify-center text-2xl text-neutral-600 opacity-40">
+                ✦
+              </div>
+            </div>
+          )}
         </div>
 
-        {/* Deck carousel */}
-        {hasMultiple ? (
+        {/* Deck navigation */}
+        {hasCarousel ? (
           <div className="flex items-center gap-2">
             <button
               type="button"
@@ -86,8 +249,10 @@ export function CardDetail({deckVersions, meta, initialDeckIndex = 0}: CardDetai
             </button>
 
             <div className="flex flex-col items-center gap-0.5">
-              <span className="text-[11px] font-medium text-neutral-300">{current.name}</span>
-              {current.creators && (
+              <span className="text-[11px] font-medium text-neutral-300">
+                {current?.name || 'Rider Smith Waite'}
+              </span>
+              {current?.creators && (
                 <span className="text-[10px] text-neutral-500">{current.creators}</span>
               )}
               <div className="mt-0.5 flex gap-1">
@@ -116,49 +281,52 @@ export function CardDetail({deckVersions, meta, initialDeckIndex = 0}: CardDetai
           </div>
         ) : (
           <div className="flex flex-col items-center gap-0.5">
-            <span className="text-[11px] font-medium text-neutral-400">{current.name}</span>
-            {current.creators && (
-              <span className="text-[10px] text-neutral-500">{current.creators}</span>
+            <span className="text-[11px] font-medium text-neutral-400">
+              {current?.name || 'Rider Smith Waite'}
+            </span>
+            {!deckVersions && (
+              <span className="text-[10px] text-neutral-600">Loading decks…</span>
             )}
           </div>
         )}
       </div>
 
       {/* Flowing text content */}
-      {meta && (
+      {displayMeta && (
         <>
-          {/* Card name + alternates */}
           <h3 className="font-serif text-lg font-semibold tracking-wide text-neutral-100">
-            {meta.names[0]}
+            {displayMeta.names[0]}
           </h3>
-          {meta.names.length > 1 && (
+          {displayMeta.names.length > 1 && (
             <p className="mt-0.5 text-xs italic text-neutral-500">
-              {meta.names.slice(1).join(' · ')}
+              {displayMeta.names.slice(1).join(' · ')}
             </p>
           )}
 
-          {/* Correspondences as inline tags */}
           {corr.length > 0 && (
             <p className="mt-1.5 text-[11px] font-medium uppercase tracking-wider text-neutral-500">
               {corr.join(' · ')}
             </p>
           )}
 
-          {meta.tldr && (
-            <p className="mt-2 text-sm leading-relaxed text-neutral-400">{meta.tldr}</p>
+          {displayMeta.tldr && (
+            <p className="mt-2 text-sm leading-relaxed text-neutral-400">{displayMeta.tldr}</p>
           )}
 
-          {/* Meanings */}
-          {meta.upright?.length > 0 && (
+          {displayMeta.upright?.length > 0 && (
             <p className="mt-2 text-sm leading-relaxed text-neutral-300">
-              <span className="text-[10px] font-medium uppercase tracking-wider text-neutral-500">Upright </span>
-              {meta.upright.join(' · ')}
+              <span className="text-[10px] font-medium uppercase tracking-wider text-neutral-500">
+                Upright{' '}
+              </span>
+              {displayMeta.upright.join(' · ')}
             </p>
           )}
-          {meta.reversed?.length > 0 && (
+          {displayMeta.reversed?.length > 0 && (
             <p className="mt-1 text-sm leading-relaxed text-neutral-400">
-              <span className="text-[10px] font-medium uppercase tracking-wider text-neutral-500">Reversed </span>
-              {meta.reversed.join(' · ')}
+              <span className="text-[10px] font-medium uppercase tracking-wider text-neutral-500">
+                Reversed{' '}
+              </span>
+              {displayMeta.reversed.join(' · ')}
             </p>
           )}
         </>
@@ -166,6 +334,52 @@ export function CardDetail({deckVersions, meta, initialDeckIndex = 0}: CardDetai
 
       {/* Clear float */}
       <div className="clear-both" />
+    </div>
+  )
+}
+
+// ─── Cached image renderer ──────────────────────────────────────
+
+interface CachedImageProps {
+  art: NonNullable<CachedCard['smithWaite']>
+  onLoad: () => void
+  loaded: boolean
+}
+
+function CachedImage({art, onLoad, loaded}: CachedImageProps) {
+  const width = 200
+  const aspectRatio = art.dimensions
+    ? getCroppedAspectRatio(
+        art.dimensions.width,
+        art.dimensions.height,
+        art.crop as ImageCrop | null,
+      )
+    : 0.667
+  const borderRadius = getScaledBorderRadius(art.cornerRounding || 0, width)
+  const imageUrl = buildImageUrl(art.imageUrl, {
+    width: width * 2,
+    crop: art.crop as ImageCrop | null,
+    dimensions: art.dimensions,
+  })
+
+  return (
+    <div
+      className={`relative overflow-hidden shadow-lg shadow-black/40 transition-opacity duration-500 ${
+        loaded ? 'opacity-100' : 'opacity-0'
+      }`}
+      style={{
+        width: `${width}px`,
+        aspectRatio: String(aspectRatio),
+        borderRadius: `${borderRadius}px`,
+      }}
+    >
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={imageUrl}
+        alt=""
+        className="h-full w-full object-cover"
+        onLoad={onLoad}
+      />
     </div>
   )
 }

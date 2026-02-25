@@ -37,6 +37,11 @@ function sanityQuery(query: string, params?: Record<string, string>) {
 export async function GET(req: NextRequest) {
   const params = req.nextUrl.searchParams
 
+  // Full card cache — all 78 cards with Smith-Waite art + metadata
+  if (params.get('cache') === 'all') {
+    return handleCardCache()
+  }
+
   // Deck listing endpoint
   if (params.get('decks') === 'true') {
     return handleDeckList()
@@ -53,6 +58,71 @@ export async function GET(req: NextRequest) {
   const cardTitles = titles ? titles.split(',').map((t) => t.trim()) : [title!]
 
   return handleCardArt(cardTitles, deckSlug)
+}
+
+/**
+ * Returns all 78 cards with metadata + Smith-Waite artwork.
+ * Cached aggressively — this data rarely changes.
+ */
+async function handleCardCache() {
+  const query = `*[_type == "card"] | order(index asc) {
+    _id,
+    "name": names[0],
+    names,
+    suit,
+    number,
+    arcana,
+    element,
+    astrology,
+    hebrewLetter,
+    sephirot,
+    tldr,
+    "upright": meanings.upright[].children[0].text,
+    "reversed": meanings.reversed[].children[0].text,
+    "art": *[_type == "cardArt" && card._ref == ^._id && deck._ref == "deck-smith-waite"][0]{
+      "imageUrl": image.asset->url,
+      "dimensions": image.asset->metadata.dimensions {
+        width, height, aspectRatio
+      },
+      "crop": image.crop,
+      "hotspot": image.hotspot,
+      "cornerRounding": deck->cornerRounding
+    }
+  }`
+
+  try {
+    const response = await sanityQuery(query)
+    if (!response.ok) {
+      return NextResponse.json({error: 'Failed to query Sanity'}, {status: 502})
+    }
+
+    const data = await response.json()
+    const cards = (data.result || []).map((card: Record<string, unknown>) => ({
+      id: card._id,
+      name: card.name,
+      names: card.names || [],
+      meta: {
+        names: card.names || [],
+        suit: card.suit,
+        number: card.number,
+        arcana: card.arcana,
+        element: card.element,
+        astrology: card.astrology,
+        hebrewLetter: card.hebrewLetter,
+        tldr: card.tldr,
+        upright: card.upright || [],
+        reversed: card.reversed || [],
+      },
+      smithWaite: card.art || null,
+    }))
+
+    return NextResponse.json(cards, {
+      headers: {'Cache-Control': 'public, max-age=86400, s-maxage=86400'},
+    })
+  } catch (err) {
+    console.error('Card cache query error:', err)
+    return NextResponse.json({error: 'Internal error'}, {status: 500})
+  }
 }
 
 async function handleDeckList() {
