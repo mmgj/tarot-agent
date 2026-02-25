@@ -14,6 +14,7 @@ import {Loader} from './Loader'
 import {Message} from './message/Message'
 import {ToolCall} from './ToolCall'
 import {generateSuggestions} from '@/lib/suggestions'
+import {warmCardCache} from '@/lib/card-cache'
 
 function isWaitingForText(messages: UIMessage[]): boolean {
   const last = messages[messages.length - 1]
@@ -43,6 +44,11 @@ export function Chat({debug = false}: ChatProps) {
 
   // Generate suggestions once on mount — stable across re-renders
   const suggestions = useMemo(() => generateSuggestions(), [])
+
+  // Warm card cache early so detail views render instantly
+  useEffect(() => {
+    warmCardCache().catch(() => {})
+  }, [])
 
   const {messages, sendMessage, status, error, regenerate} = useChat({
     sendAutomaticallyWhen: ({messages}) => {

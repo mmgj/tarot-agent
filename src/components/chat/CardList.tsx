@@ -1,18 +1,23 @@
 'use client'
 
-import {X} from 'lucide-react'
-import {useCallback, useEffect, useRef, useState} from 'react'
+import {useCallback, useRef, useState} from 'react'
 
-import {CardDetail} from './CardDetail'
+import {DetailModal} from './DetailModal'
 import {CardImage} from './CardImage'
-import {formatCreators, type CardArtResult, type CardMeta} from '@/lib/sanity-image'
-import {getCardSync, type CachedCard} from '@/lib/card-cache'
+import {type CardArtResult, type CardMeta} from '@/lib/sanity-image'
+
+interface DeckGroup {
+  slug: string
+  name: string
+  creators: string
+  cards: CardArtResult[]
+}
 
 interface CardListProps {
   /** Ordered cards to display */
   cards: {art: CardArtResult; meta: CardMeta | null}[]
   /** All deck groups for carousel in detail modal */
-  deckGroups?: {slug: string; name: string; creators: string; cards: CardArtResult[]}[]
+  deckGroups?: DeckGroup[]
   /** Current deck index */
   currentDeckIndex?: number
 }
@@ -91,99 +96,6 @@ function CardRow({
   )
 }
 
-// ─── Detail Modal ───────────────────────────────────────────────
-
-function DetailModal({
-  card,
-  deckGroups,
-  currentDeckIndex,
-  onClose,
-}: {
-  card: {art: CardArtResult; meta: CardMeta | null}
-  deckGroups?: CardListProps['deckGroups']
-  currentDeckIndex: number
-  onClose: () => void
-}) {
-  const [isOpen, setIsOpen] = useState(false)
-
-  // Slide in on mount
-  useEffect(() => {
-    requestAnimationFrame(() => setIsOpen(true))
-  }, [])
-
-  const handleClose = useCallback(() => {
-    setIsOpen(false)
-    setTimeout(onClose, 300) // Wait for slide-out animation
-  }, [onClose])
-
-  // Close on Escape
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') handleClose()
-    }
-    window.addEventListener('keydown', handler)
-    return () => window.removeEventListener('keydown', handler)
-  }, [handleClose])
-
-  // Build deck versions for the carousel
-  const deckVersions = deckGroups
-    ? deckGroups
-        .filter((dg) => dg.cards.some((c) => c.cardTitle === card.art.cardTitle))
-        .map((dg) => ({
-          slug: dg.slug,
-          name: dg.name,
-          creators: dg.creators,
-          art: dg.cards.find((c) => c.cardTitle === card.art.cardTitle) || dg.cards[0],
-        }))
-    : null
-
-  // Find the current deck in the filtered list
-  const modalDeckIndex = deckVersions
-    ? deckVersions.findIndex((dv) => dv.slug === deckGroups?.[currentDeckIndex]?.slug)
-    : 0
-
-  const cached: CachedCard | null = getCardSync(card.art.cardTitle)
-
-  return (
-    <>
-      {/* Backdrop */}
-      <div
-        className={`fixed inset-0 z-40 bg-black/60 backdrop-blur-sm transition-opacity duration-300 ${
-          isOpen ? 'opacity-100' : 'opacity-0'
-        }`}
-        onClick={handleClose}
-      />
-
-      {/* Slide-in panel */}
-      <div
-        className={`fixed inset-y-0 right-0 z-50 w-full max-w-md overflow-y-auto bg-neutral-950 shadow-2xl shadow-black/50 transition-transform duration-300 ease-out ${
-          isOpen ? 'translate-x-0' : 'translate-x-full'
-        }`}
-      >
-        {/* Close button */}
-        <button
-          type="button"
-          onClick={handleClose}
-          className="absolute top-3 right-3 z-10 rounded-full p-1.5 text-neutral-500 transition-colors hover:bg-neutral-800 hover:text-neutral-300"
-          aria-label="Close"
-        >
-          <X className="h-5 w-5" />
-        </button>
-
-        {/* Detail content */}
-        <div className="p-5 pt-12">
-          <CardDetail
-            cached={cached}
-            deckVersions={deckVersions}
-            meta={card.meta}
-            initialDeckIndex={Math.max(0, modalDeckIndex)}
-          />
-        </div>
-      </div>
-    </>
-  )
-}
-
 // ─── Main Component ─────────────────────────────────────────────
 
 export function CardList({cards, deckGroups, currentDeckIndex = 0}: CardListProps) {
@@ -206,7 +118,9 @@ export function CardList({cards, deckGroups, currentDeckIndex = 0}: CardListProp
       {/* Detail modal */}
       {selectedIndex !== null && cards[selectedIndex] && (
         <DetailModal
-          card={cards[selectedIndex]}
+          cardTitle={cards[selectedIndex].art.cardTitle}
+          art={cards[selectedIndex].art}
+          meta={cards[selectedIndex].meta}
           deckGroups={deckGroups}
           currentDeckIndex={currentDeckIndex}
           onClose={() => setSelectedIndex(null)}

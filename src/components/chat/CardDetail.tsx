@@ -24,8 +24,10 @@ interface DeckVersion {
 }
 
 interface CardDetailProps {
+  /** Card title — always available, shown even before cache/API loads */
+  cardTitle: string
   /** Cached card data for instant render (Smith-Waite + metadata) */
-  cached: CachedCard | null
+  cached?: CachedCard | null
   /** All deck versions — null while loading, empty array if failed */
   deckVersions: DeckVersion[] | null
   /** Card metadata (from cache or API) */
@@ -44,7 +46,7 @@ const SWIPE_THRESHOLD = 50
 
 // ─── Component ──────────────────────────────────────────────────
 
-export function CardDetail({cached, deckVersions, meta, initialDeckIndex = 0}: CardDetailProps) {
+export function CardDetail({cardTitle, cached, deckVersions, meta, initialDeckIndex = 0}: CardDetailProps) {
   const [deckIndex, setDeckIndex] = useState(initialDeckIndex)
   const [imageLoaded, setImageLoaded] = useState(false)
   const [swipeOffset, setSwipeOffset] = useState(0)
@@ -58,6 +60,7 @@ export function CardDetail({cached, deckVersions, meta, initialDeckIndex = 0}: C
 
   // Use cached Smith-Waite data for instant render, upgrade when API data arrives
   const displayMeta = meta || cached?.meta || null
+  const displayTitle = displayMeta?.names?.[0] || cached?.name || cardTitle
   const cachedArt = cached?.smithWaite
 
   const handleLoad = useCallback(() => {
@@ -228,9 +231,7 @@ export function CardDetail({cached, deckVersions, meta, initialDeckIndex = 0}: C
             </div>
           ) : (
             /* ─── Shimmer placeholder ─── */
-            <div
-              className="absolute inset-0 flex items-center justify-center"
-            >
+            <div className="absolute inset-0 flex items-center justify-center">
               <div
                 className="relative overflow-hidden rounded-lg shadow-lg shadow-black/40"
                 style={{width: '200px', height: '300px'}}
@@ -299,12 +300,13 @@ export function CardDetail({cached, deckVersions, meta, initialDeckIndex = 0}: C
         )}
       </div>
 
-      {/* Flowing text content */}
-      {displayMeta && (
+      {/* Flowing text content — always show title, metadata loads progressively */}
+      <h3 className="font-serif text-lg font-semibold tracking-wide text-neutral-100">
+        {displayTitle}
+      </h3>
+
+      {displayMeta ? (
         <>
-          <h3 className="font-serif text-lg font-semibold tracking-wide text-neutral-100">
-            {displayMeta.names[0]}
-          </h3>
           {displayMeta.names.length > 1 && (
             <p className="mt-0.5 text-xs italic text-neutral-500">
               {displayMeta.names.slice(1).join(' · ')}
@@ -338,6 +340,13 @@ export function CardDetail({cached, deckVersions, meta, initialDeckIndex = 0}: C
             </p>
           )}
         </>
+      ) : (
+        /* Loading state for metadata */
+        <div className="mt-2 space-y-2">
+          <div className="shimmer h-3 w-32 rounded bg-neutral-800" />
+          <div className="shimmer h-3 w-48 rounded bg-neutral-800" style={{animationDelay: '0.2s'}} />
+          <div className="shimmer h-3 w-40 rounded bg-neutral-800" style={{animationDelay: '0.4s'}} />
+        </div>
       )}
 
       {/* Clear float */}
@@ -370,6 +379,9 @@ function CachedImage({art, onLoad, loaded}: CachedImageProps) {
     dimensions: art.dimensions,
   })
 
+  // Cap height to fit in the 300px container
+  const computedHeight = Math.min(Math.round(width / aspectRatio), 300)
+
   return (
     <div
       className={`relative overflow-hidden shadow-lg shadow-black/40 transition-opacity duration-500 ${
@@ -377,7 +389,7 @@ function CachedImage({art, onLoad, loaded}: CachedImageProps) {
       }`}
       style={{
         width: `${width}px`,
-        aspectRatio: String(aspectRatio),
+        height: `${computedHeight}px`,
         borderRadius: `${borderRadius}px`,
       }}
     >

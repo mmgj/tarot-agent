@@ -6,6 +6,7 @@ import {useCallback, useEffect, useRef, useState} from 'react'
 import {CardDetail} from './CardDetail'
 import {CardImage} from './CardImage'
 import {CardList} from './CardList'
+import {DetailModal} from './DetailModal'
 import {formatCreators, type CardArtResult} from '@/lib/sanity-image'
 import {getCardSync, warmCardCache, type CachedCard} from '@/lib/card-cache'
 
@@ -29,6 +30,7 @@ export function CardSpread({cardTitles}: CardSpreadProps) {
   const [allImagesLoaded, setAllImagesLoaded] = useState(false)
   const [error, setError] = useState(false)
   const [cacheReady, setCacheReady] = useState(false)
+  const [selectedCard, setSelectedCard] = useState<string | null>(null)
   const loadedCount = useRef(0)
 
   // Stable key for the effect — prevents re-fetching on every streaming re-render
@@ -43,7 +45,6 @@ export function CardSpread({cardTitles}: CardSpreadProps) {
   }, [])
 
   // Fetch all art for these cards (all decks)
-  // Debounce by 300ms so we don't re-fetch on every streaming token.
   useEffect(() => {
     if (!titlesKey) return
     if (titlesKey === lastFetchedKey.current) return
@@ -60,7 +61,6 @@ export function CardSpread({cardTitles}: CardSpreadProps) {
             return
           }
 
-          // Group by deck
           const byDeck = new Map<string, DeckGroup>()
           for (const card of data.cards as CardArtResult[]) {
             if (!byDeck.has(card.deckSlug)) {
@@ -74,14 +74,12 @@ export function CardSpread({cardTitles}: CardSpreadProps) {
             byDeck.get(card.deckSlug)!.cards.push(card)
           }
 
-          // Only include decks that have ALL the requested cards
           const completeDeckGroups = Array.from(byDeck.values())
             .filter((g) => g.cards.length >= cardTitles.length)
             .sort((a, b) => a.name.localeCompare(b.name))
 
           setDecks(completeDeckGroups)
 
-          // Default to Smith-Waite, fall back to first available
           const defaultIdx = completeDeckGroups.findIndex((g) => g.slug === DEFAULT_DECK)
           if (defaultIdx >= 0) setCurrentDeckIndex(defaultIdx)
         })
@@ -137,7 +135,6 @@ export function CardSpread({cardTitles}: CardSpreadProps) {
     const title = cardTitles[0]
     const cached: CachedCard | null = cacheReady ? getCardSync(title) : null
 
-    // Build deck versions if API data is ready
     const deckVersions = currentDeck
       ? decks.map((dg) => ({
           slug: dg.slug,
@@ -151,6 +148,7 @@ export function CardSpread({cardTitles}: CardSpreadProps) {
 
     return (
       <CardDetail
+        cardTitle={title}
         cached={cached}
         deckVersions={deckVersions}
         meta={apiCard?.cardMeta ?? cached?.meta ?? null}
@@ -237,7 +235,7 @@ export function CardSpread({cardTitles}: CardSpreadProps) {
     )
   }
 
-  // ─── 2–5 CARDS: Spread view (horizontal layout) ─────────────
+  // ─── 2–5 CARDS: Spread view — clickable cards ───────────────
 
   return (
     <div className="my-4 flex flex-col items-center gap-4">
@@ -248,7 +246,14 @@ export function CardSpread({cardTitles}: CardSpreadProps) {
         style={{minHeight: allImagesLoaded ? undefined : '16rem'}}
       >
         {orderedCards.map((art, i) => (
-          <CardImage key={`${art.deckSlug}-${art.cardTitle}-${i}`} art={art} onLoad={handleImageLoad} />
+          <button
+            key={`${art.deckSlug}-${art.cardTitle}-${i}`}
+            type="button"
+            onClick={() => setSelectedCard(art.cardTitle)}
+            className="cursor-pointer transition-transform hover:scale-105"
+          >
+            <CardImage art={art} onLoad={handleImageLoad} />
+          </button>
         ))}
       </div>
 
@@ -258,6 +263,18 @@ export function CardSpread({cardTitles}: CardSpreadProps) {
         onNavigate={navigateDeck}
         onSwitch={switchDeck}
       />
+
+      {/* Detail modal for clicked card */}
+      {selectedCard && (
+        <DetailModal
+          cardTitle={selectedCard}
+          art={currentDeck.cards.find((c) => c.cardTitle === selectedCard)}
+          meta={currentDeck.cards.find((c) => c.cardTitle === selectedCard)?.cardMeta ?? null}
+          deckGroups={decks}
+          currentDeckIndex={currentDeckIndex}
+          onClose={() => setSelectedCard(null)}
+        />
+      )}
     </div>
   )
 }
