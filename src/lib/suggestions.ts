@@ -33,8 +33,8 @@ export function generateSuggestions(): string[] {
   const prop = pickRandom(GROUPABLE_PROPERTIES, 1)[0]
 
   return [
+    'Draw a random card',
     'Draw 3 cards for me',
-    'Draw 5 cards for me',
     `List all ${suitOrMajor} cards`,
     `Which cards have ${prop.query} in common?`,
   ]
