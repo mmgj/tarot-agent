@@ -7,7 +7,7 @@ import {
   lastAssistantMessageIsCompleteWithToolCalls,
   type UIMessage,
 } from 'ai'
-import {useEffect, useMemo, useRef, useState} from 'react'
+import {useEffect, useRef, useState} from 'react'
 
 import {ChatInput} from './ChatInput'
 import {Loader} from './Loader'
@@ -42,8 +42,12 @@ export function Chat({debug = false}: ChatProps) {
   const [input, setInput] = useState('')
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
-  // Generate suggestions once on mount — stable across re-renders
-  const suggestions = useMemo(() => generateSuggestions(), [])
+  // Generate suggestions client-side only to avoid hydration mismatch
+  // (generateSuggestions uses Math.random which differs server vs client)
+  const [suggestions, setSuggestions] = useState<string[]>([])
+  useEffect(() => {
+    setSuggestions(generateSuggestions())
+  }, [])
 
   // Warm card cache early so detail views render instantly
   useEffect(() => {
@@ -174,7 +178,7 @@ export function Chat({debug = false}: ChatProps) {
       {/* Input area */}
       <div className="border-t border-[var(--border)]">
         {/* Collapsed suggestion chips — shown after first message */}
-        {hasMessages && !isLoading && (
+        {hasMessages && !isLoading && suggestions.length > 0 && (
           <div className="flex gap-1.5 overflow-x-auto px-4 pt-2 pb-0 scrollbar-none">
             {suggestions.map((suggestion) => (
               <button

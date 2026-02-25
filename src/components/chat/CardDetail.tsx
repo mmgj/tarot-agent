@@ -58,8 +58,10 @@ export function CardDetail({cardTitle, cached, deckVersions, meta, initialDeckIn
   const touchStartX = useRef<number | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
 
-  const hasCarousel = deckVersions && deckVersions.length > 1
-  const current = deckVersions?.[deckIndex]
+  // Treat empty array same as null — no deck data available yet
+  const effectiveVersions = deckVersions && deckVersions.length > 0 ? deckVersions : null
+  const hasCarousel = effectiveVersions && effectiveVersions.length > 1
+  const current = effectiveVersions?.[deckIndex]
 
   const displayMeta = meta || cached?.meta || null
   const displayTitle = displayMeta?.names?.[0] || cached?.name || cardTitle
@@ -98,7 +100,7 @@ export function CardDetail({cardTitle, cached, deckVersions, meta, initialDeckIn
   )
 
   const handleTouchEnd = useCallback(() => {
-    if (touchStartX.current === null || !hasCarousel || !deckVersions) return
+    if (touchStartX.current === null || !hasCarousel || !effectiveVersions) return
 
     if (Math.abs(swipeOffset) > SWIPE_THRESHOLD) {
       setIsAnimating(true)
@@ -107,8 +109,8 @@ export function CardDetail({cardTitle, cached, deckVersions, meta, initialDeckIn
       setTimeout(() => {
         setDeckIndex((prev) =>
           goNext
-            ? prev < deckVersions.length - 1 ? prev + 1 : 0
-            : prev > 0 ? prev - 1 : deckVersions.length - 1,
+            ? prev < effectiveVersions.length - 1 ? prev + 1 : 0
+            : prev > 0 ? prev - 1 : effectiveVersions.length - 1,
         )
         setSwipeOffset(0)
         setIsAnimating(false)
@@ -118,24 +120,24 @@ export function CardDetail({cardTitle, cached, deckVersions, meta, initialDeckIn
     }
 
     touchStartX.current = null
-  }, [swipeOffset, hasCarousel, deckVersions])
+  }, [swipeOffset, hasCarousel, effectiveVersions])
 
   const navigate = useCallback(
     (dir: 'prev' | 'next') => {
-      if (isAnimating || !hasCarousel || !deckVersions) return
+      if (isAnimating || !hasCarousel || !effectiveVersions) return
       setIsAnimating(true)
       setSwipeOffset(dir === 'next' ? -CAROUSEL_WIDTH : CAROUSEL_WIDTH)
       setTimeout(() => {
         setDeckIndex((prev) =>
           dir === 'next'
-            ? prev < deckVersions.length - 1 ? prev + 1 : 0
-            : prev > 0 ? prev - 1 : deckVersions.length - 1,
+            ? prev < effectiveVersions.length - 1 ? prev + 1 : 0
+            : prev > 0 ? prev - 1 : effectiveVersions.length - 1,
         )
         setSwipeOffset(0)
         setIsAnimating(false)
       }, 250)
     },
-    [isAnimating, hasCarousel, deckVersions],
+    [isAnimating, hasCarousel, effectiveVersions],
   )
 
   // ─── Build correspondences ──────────────────────────────────
@@ -148,11 +150,11 @@ export function CardDetail({cardTitle, cached, deckVersions, meta, initialDeckIn
 
   // ─── Adjacent indices for carousel ──────────────────────────
 
-  const prevIndex = deckVersions
-    ? deckIndex > 0 ? deckIndex - 1 : deckVersions.length - 1
+  const prevIndex = effectiveVersions
+    ? deckIndex > 0 ? deckIndex - 1 : effectiveVersions.length - 1
     : 0
-  const nextIndex = deckVersions
-    ? deckIndex < deckVersions.length - 1 ? deckIndex + 1 : 0
+  const nextIndex = effectiveVersions
+    ? deckIndex < effectiveVersions.length - 1 ? deckIndex + 1 : 0
     : 0
 
   // ─── Render ─────────────────────────────────────────────────
@@ -180,12 +182,12 @@ export function CardDetail({cardTitle, cached, deckVersions, meta, initialDeckIn
               }}
             >
               {/* Previous image (off-screen left) */}
-              {deckVersions[prevIndex] && (
+              {effectiveVersions[prevIndex] && (
                 <div
                   className="absolute inset-0 flex items-center justify-center"
                   style={{transform: 'translateX(-100%)'}}
                 >
-                  <CardImage art={deckVersions[prevIndex].art} width={CAROUSEL_WIDTH} contain />
+                  <CardImage art={effectiveVersions[prevIndex].art} width={CAROUSEL_WIDTH} contain />
                 </div>
               )}
 
@@ -203,12 +205,12 @@ export function CardDetail({cardTitle, cached, deckVersions, meta, initialDeckIn
               )}
 
               {/* Next image (off-screen right) */}
-              {deckVersions[nextIndex] && (
+              {effectiveVersions[nextIndex] && (
                 <div
                   className="absolute inset-0 flex items-center justify-center"
                   style={{transform: 'translateX(100%)'}}
                 >
-                  <CardImage art={deckVersions[nextIndex].art} width={CAROUSEL_WIDTH} contain />
+                  <CardImage art={effectiveVersions[nextIndex].art} width={CAROUSEL_WIDTH} contain />
                 </div>
               )}
             </div>
@@ -240,7 +242,7 @@ export function CardDetail({cardTitle, cached, deckVersions, meta, initialDeckIn
         </div>
 
         {/* Deck navigation */}
-        {hasCarousel ? (
+        {hasCarousel && effectiveVersions ? (
           <div className="flex items-center gap-2">
             <button
               type="button"
@@ -259,7 +261,7 @@ export function CardDetail({cardTitle, cached, deckVersions, meta, initialDeckIn
                 <span className="text-[10px] text-neutral-500">{current.creators}</span>
               )}
               <div className="mt-0.5 flex gap-1">
-                {deckVersions.map((dv, i) => (
+                {effectiveVersions.map((dv, i) => (
                   <button
                     key={dv.slug}
                     type="button"
@@ -287,7 +289,7 @@ export function CardDetail({cardTitle, cached, deckVersions, meta, initialDeckIn
             <span className="text-[11px] font-medium text-neutral-400">
               {current?.name || 'Rider Smith Waite'}
             </span>
-            {!deckVersions && (
+            {!effectiveVersions && (
               <span className="text-[10px] text-neutral-600">Loading decks…</span>
             )}
           </div>
