@@ -25,7 +25,7 @@ export function TextPart({text, isUser}: TextPartProps) {
       components={{
         a({href = '', children}) {
           const className = cn(
-            'underline',
+            'underline transition-colors',
             isUser ? 'text-white/90 hover:text-white' : 'text-purple-400 hover:text-purple-300',
           )
           return (
@@ -37,25 +37,53 @@ export function TextPart({text, isUser}: TextPartProps) {
         p: ({children, node}) => {
           if (isImageOnlyParagraph(node as Element | undefined)) {
             return (
-              <div className="my-3 flex items-end justify-center gap-3">{children}</div>
+              <div className="my-4 flex flex-wrap items-end justify-center gap-4">{children}</div>
             )
           }
-          return <p className="whitespace-pre-wrap">{children}</p>
+          return <p className="whitespace-pre-wrap leading-relaxed">{children}</p>
         },
-        ul: ({children}) => <ul className="list-disc pl-4">{children}</ul>,
-        ol: ({children}) => <ol className="list-decimal pl-4">{children}</ol>,
-        strong: ({children}) => <strong className="font-semibold">{children}</strong>,
-        h2: ({children}) => <h2 className="mt-3 mb-1 text-base font-semibold">{children}</h2>,
-        h3: ({children}) => <h3 className="mt-2 mb-1 text-sm font-semibold">{children}</h3>,
+        ul: ({children}) => (
+          <ul className="list-disc space-y-1 pl-5 marker:text-purple-500/50">{children}</ul>
+        ),
+        ol: ({children}) => (
+          <ol className="list-decimal space-y-1 pl-5 marker:text-purple-500/50">{children}</ol>
+        ),
+        li: ({children}) => <li className="leading-relaxed">{children}</li>,
+        strong: ({children}) => (
+          <strong className="font-serif font-semibold text-purple-300">{children}</strong>
+        ),
+        em: ({children}) => <em className="text-neutral-300 italic">{children}</em>,
+        h2: ({children}) => (
+          <h2 className="mt-4 mb-2 font-serif text-lg font-semibold tracking-wide text-neutral-100">
+            {children}
+          </h2>
+        ),
+        h3: ({children}) => (
+          <h3 className="mt-3 mb-1 font-serif text-base font-medium text-neutral-200">
+            {children}
+          </h3>
+        ),
+        hr: () => (
+          <hr className="my-4 border-none text-center before:text-neutral-600 before:tracking-[0.5em] before:content-['✦_✦_✦']" />
+        ),
+        blockquote: ({children}) => (
+          <blockquote className="my-3 border-l-2 border-purple-500/40 pl-4 text-neutral-400 italic">
+            {children}
+          </blockquote>
+        ),
         img: ({src, alt}) => (
-          <figure className="inline-flex flex-col items-center gap-1">
-            <img
-              src={src}
-              alt={alt || 'Card image'}
-              className="max-h-72 rounded-lg object-contain shadow-md shadow-black/30"
-            />
+          <figure className="card-deal inline-flex flex-col items-center gap-2">
+            <div className="card-image overflow-hidden rounded-lg shadow-lg shadow-black/40">
+              <img
+                src={src}
+                alt={alt || 'Card image'}
+                className="h-auto w-36 object-contain sm:w-44"
+              />
+            </div>
             {alt && alt !== 'Card image' && (
-              <figcaption className="text-xs text-neutral-400">{alt}</figcaption>
+              <figcaption className="font-serif text-xs font-medium tracking-wide text-neutral-400">
+                {alt}
+              </figcaption>
             )}
           </figure>
         ),

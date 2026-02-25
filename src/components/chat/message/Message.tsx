@@ -17,13 +17,13 @@ export function Message({message}: MessageProps) {
   if (content.length === 0) return null
 
   return (
-    <div className={cn('flex', isUser ? 'justify-end' : 'justify-start')}>
+    <div className={cn('message-enter flex', isUser ? 'justify-end' : 'justify-start')}>
       <div
         className={cn(
-          'space-y-2 rounded-2xl px-4 py-3 text-sm',
+          'space-y-3 rounded-2xl px-4 py-3 text-sm',
           isUser
-            ? 'max-w-[85%] bg-purple-600 text-white'
-            : 'max-w-[95%] bg-neutral-800 text-neutral-100',
+            ? 'max-w-[85%] bg-purple-600/90 text-white'
+            : 'max-w-[95%] border border-[var(--border)] bg-[var(--surface)] text-neutral-200',
         )}
       >
         {content.map((part, i) => (

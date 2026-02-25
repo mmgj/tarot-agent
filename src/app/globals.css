@@ -1,11 +1,97 @@
 @import 'tailwindcss';
 
+@theme {
+  --font-sans: var(--font-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-serif: var(--font-serif), ui-serif, Georgia, serif;
+}
+
 :root {
   --background: #0a0a0a;
   --foreground: #ededed;
+  --accent: #a855f7;
+  --accent-muted: #7c3aed;
+  --surface: #171717;
+  --surface-raised: #1f1f1f;
+  --border: #2a2a2a;
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
+}
+
+/* Card image hover effect */
+.card-image {
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.card-image:hover {
+  transform: scale(1.05);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6), 0 0 20px rgba(168, 85, 247, 0.15);
+}
+
+/* Subtle shimmer for loading states */
+@keyframes shimmer {
+  0% { opacity: 0.4; }
+  50% { opacity: 1; }
+  100% { opacity: 0.4; }
+}
+
+.shimmer {
+  animation: shimmer 2s ease-in-out infinite;
+}
+
+/* Card deal animation */
+@keyframes deal {
+  0% {
+    opacity: 0;
+    transform: translateY(20px) rotateY(90deg) scale(0.8);
+  }
+  60% {
+    opacity: 1;
+    transform: translateY(-4px) rotateY(0deg) scale(1.02);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) rotateY(0deg) scale(1);
+  }
+}
+
+.card-deal {
+  animation: deal 0.6s ease-out both;
+}
+
+/* Stagger card animations */
+.card-deal:nth-child(1) { animation-delay: 0s; }
+.card-deal:nth-child(2) { animation-delay: 0.15s; }
+.card-deal:nth-child(3) { animation-delay: 0.3s; }
+.card-deal:nth-child(4) { animation-delay: 0.45s; }
+.card-deal:nth-child(5) { animation-delay: 0.6s; }
+
+/* Message fade-in */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.message-enter {
+  animation: fadeIn 0.3s ease-out both;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #333;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #555;
 }

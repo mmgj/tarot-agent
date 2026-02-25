@@ -19,13 +19,13 @@ export function ToolCall({toolName, state, input, output}: ToolCallProps) {
     : state === 'output-error'
       ? 'text-red-500'
       : 'text-green-500'
-  const statusText = isRunning ? 'Running...' : state === 'output-error' ? 'Error' : 'Done'
+  const statusText = isRunning ? 'Running…' : state === 'output-error' ? 'Error' : 'Done'
 
   return (
-    <div className="overflow-hidden rounded-lg border border-neutral-700 bg-neutral-800">
+    <div className="overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--surface)]">
       <button
         onClick={() => setIsExpanded(!isExpanded)}
-        className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs hover:bg-neutral-700"
+        className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs transition-colors hover:bg-[var(--surface-raised)]"
         type="button"
       >
         {isExpanded ? (
@@ -36,15 +36,15 @@ export function ToolCall({toolName, state, input, output}: ToolCallProps) {
 
         <span className="font-mono text-neutral-300">{toolName}</span>
 
-        <span className={`${statusColor} ${isRunning ? 'animate-pulse' : ''}`}>{statusText}</span>
+        <span className={`${statusColor} ${isRunning ? 'shimmer' : ''}`}>{statusText}</span>
       </button>
 
       {isExpanded && (
-        <div className="space-y-2 border-t border-neutral-700 px-3 py-2 text-xs">
+        <div className="space-y-2 border-t border-[var(--border)] px-3 py-2 text-xs">
           {input !== undefined && input !== null && (
             <div>
               <div className="mb-1 font-medium text-neutral-400">Input</div>
-              <pre className="overflow-x-auto rounded bg-neutral-900 p-2 text-neutral-300">
+              <pre className="overflow-x-auto rounded bg-black/30 p-2 text-neutral-300">
                 {typeof input === 'string' ? input : JSON.stringify(input, null, 2)}
               </pre>
             </div>
@@ -53,7 +53,7 @@ export function ToolCall({toolName, state, input, output}: ToolCallProps) {
           {output !== undefined && output !== null && (
             <div>
               <div className="mb-1 font-medium text-neutral-400">Output</div>
-              <pre className="max-h-48 overflow-auto rounded bg-neutral-900 p-2 text-neutral-300">
+              <pre className="max-h-48 overflow-auto rounded bg-black/30 p-2 text-neutral-300">
                 {typeof output === 'string' ? output : JSON.stringify(output, null, 2)}
               </pre>
             </div>

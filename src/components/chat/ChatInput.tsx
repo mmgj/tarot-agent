@@ -1,4 +1,5 @@
 import {Send, Square} from 'lucide-react'
+import {useCallback, useEffect, useRef} from 'react'
 
 interface ChatInputProps {
   input: string
@@ -8,21 +9,45 @@ interface ChatInputProps {
 }
 
 export function ChatInput({input, setInput, onSubmit, disabled}: ChatInputProps) {
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
+
+  const adjustHeight = useCallback(() => {
+    const textarea = textareaRef.current
+    if (!textarea) return
+    textarea.style.height = 'auto'
+    textarea.style.height = `${Math.min(textarea.scrollHeight, 160)}px`
+  }, [])
+
+  useEffect(() => {
+    adjustHeight()
+  }, [input, adjustHeight])
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault()
+      if (input.trim() && !disabled) {
+        onSubmit(e as unknown as React.FormEvent)
+      }
+    }
+  }
+
   return (
-    <form onSubmit={onSubmit} className="flex gap-2">
-      <input
-        type="text"
+    <form onSubmit={onSubmit} className="flex items-end gap-2">
+      <textarea
+        ref={textareaRef}
         value={input}
         onChange={(e) => setInput(e.target.value)}
-        placeholder="Ask about a card, deck, or spread..."
-        className="flex-1 rounded-lg border border-neutral-700 bg-neutral-800 px-3 py-2 text-sm text-neutral-100 placeholder-neutral-500 focus:outline-none focus:ring-2 focus:ring-purple-500"
+        onKeyDown={handleKeyDown}
+        placeholder="Ask about a card, draw a spread…"
+        rows={1}
+        className="flex-1 resize-none rounded-xl border border-[var(--border)] bg-[var(--surface)] px-3.5 py-2.5 text-sm text-neutral-100 placeholder-neutral-500 transition-colors focus:border-purple-500/50 focus:outline-none"
         disabled={disabled}
       />
 
       <button
         type="submit"
         disabled={disabled || !input.trim()}
-        className="flex h-10 w-10 items-center justify-center rounded-lg bg-purple-600 text-white transition-colors hover:bg-purple-500 disabled:opacity-50 disabled:hover:bg-purple-600"
+        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-purple-600/80 text-white transition-all hover:bg-purple-500 disabled:opacity-40 disabled:hover:bg-purple-600/80"
       >
         {disabled ? <Square className="h-3 w-3" /> : <Send className="h-4 w-4" />}
       </button>
