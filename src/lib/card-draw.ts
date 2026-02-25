@@ -1,9 +1,13 @@
 /**
  * Client-side card drawing.
  *
- * All randomness happens here — the AI never picks cards.
- * We detect draw intent from the user's message, pick cards
- * from the warm cache, and pass the results to the AI as context.
+ * ONLY handles pure random draws — "draw 3 cards", "pull a card", etc.
+ * Anything with intent, theme, or qualifiers ("spread about love",
+ * "cards for new beginnings", "optimistic reading") goes to the AI,
+ * which uses MCP tools to select appropriate cards.
+ *
+ * The rule: if the user just wants randomness, we do it instantly.
+ * If they want the AI's judgment, we stay out of the way.
  */
 
 import {getAllCards, type CachedCard} from './card-cache'
@@ -20,28 +24,73 @@ export interface DrawResult {
 }
 
 /**
- * Detect if a message is asking to draw/pull cards.
- * Returns the count, or null if no draw intent detected.
+ * Words/phrases that signal the user wants AI judgment, not pure randomness.
+ * If any of these appear, we let the AI handle the entire request.
+ */
+const INTENT_SIGNALS = [
+  /\babout\b/i,
+  /\bfor\s+(?:my|our|the|a)\b/i,
+  /\bregarding\b/i,
+  /\brelated\s+to\b/i,
+  /\boptimistic\b/i,
+  /\bpessimistic\b/i,
+  /\blove\b/i,
+  /\bcareer\b/i,
+  /\bhealth\b/i,
+  /\bmoney\b/i,
+  /\brelationship\b/i,
+  /\bfuture\b/i,
+  /\bpast\b/i,
+  /\bguidance\b/i,
+  /\badvice\b/i,
+  /\binsight\b/i,
+  /\bmeaning\b/i,
+  /\brepresent\b/i,
+  /\bthat\s+(show|reflect|symbolize|embod)/i,
+  /\bwhich\b/i,
+  /\bwhat\b/i,
+  /\bspecific\b/i,
+  /\bchoose\b/i,
+  /\bselect\b/i,
+  /\bpick\b/i,
+  /\bbest\b/i,
+  /\bsuit(able|ed)?\b/i,
+]
+
+function hasIntentSignals(text: string): boolean {
+  return INTENT_SIGNALS.some((re) => re.test(text))
+}
+
+/**
+ * Detect if a message is a pure random draw request.
+ * Returns the count, or null if:
+ * - No draw intent detected
+ * - The message has qualifiers/themes that need AI judgment
  */
 export function detectDrawIntent(text: string): number | null {
-  const normalized = text.trim().toLowerCase()
+  const normalized = text.trim()
 
-  // Celtic Cross = 10 cards
-  if (/celtic\s+cross/i.test(normalized)) return 10
+  // If the message has intent signals, let the AI handle it entirely
+  if (hasIntentSignals(normalized)) return null
 
-  // "card of the day" / "daily card" = 1
-  if (/card\s+of\s+the\s+day/i.test(normalized)) return 1
-  if (/daily\s+card/i.test(normalized)) return 1
+  // Pure random patterns only:
 
   // "draw/pull a (random) card" = 1
-  if (/(?:draw|pull)\s+(?:a\s+)?(?:random\s+)?card\b/i.test(normalized)) return 1
+  if (/^(?:draw|pull)\s+(?:a\s+)?(?:random\s+)?card\.?$/i.test(normalized)) return 1
 
-  // "draw/pull N cards" or "N-card spread/draw/reading"
-  const drawN = normalized.match(/(?:draw|pull)\s+(?:a\s+)?(?:random\s+)?(\d+)\s+cards?/i)
+  // "draw/pull N cards" (short, no qualifiers)
+  const drawN = normalized.match(/^(?:draw|pull)\s+(?:a\s+)?(?:random\s+)?(\d+)\s+cards?\.?$/i)
   if (drawN) return Math.min(parseInt(drawN[1], 10), 78)
 
-  const spreadN = normalized.match(/(\d+)[- ]card\s+(?:spread|draw|reading)/i)
+  // "N-card spread/draw/reading" (bare, no qualifiers)
+  const spreadN = normalized.match(/^(\d+)[- ]card\s+(?:spread|draw|reading)\.?$/i)
   if (spreadN) return Math.min(parseInt(spreadN[1], 10), 78)
+
+  // "card of the day" / "daily card" = 1
+  if (/^(?:card\s+of\s+the\s+day|daily\s+card)\.?$/i.test(normalized)) return 1
+
+  // "draw a random card" from suggestion chip
+  if (/^draw\s+a\s+random\s+card\.?$/i.test(normalized)) return 1
 
   return null
 }
