@@ -103,6 +103,18 @@ async function handleCardArt(cardTitles: string[], deckSlug: string | null) {
     "creators": deck->creators[]{
       role,
       "name": person->name
+    },
+    "cardMeta": card->{
+      "names": names,
+      suit,
+      number,
+      arcana,
+      element,
+      astrology,
+      hebrewLetter,
+      tldr,
+      "upright": meanings.upright[].children[0].text,
+      "reversed": meanings.reversed[].children[0].text
     }
   } | order(cardTitle asc, deckName asc)`
 

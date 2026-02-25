@@ -28,6 +28,19 @@ export interface Creator {
   role: string
 }
 
+export interface CardMeta {
+  names: string[]
+  suit: string
+  number: number
+  arcana: string
+  element: string | null
+  astrology: string | null
+  hebrewLetter: string | null
+  tldr: string | null
+  upright: string[]
+  reversed: string[]
+}
+
 export interface CardArtResult {
   cardTitle: string
   deckName: string
@@ -39,6 +52,7 @@ export interface CardArtResult {
   crop: ImageCrop | null
   hotspot: ImageHotspot | null
   creators: Creator[]
+  cardMeta?: CardMeta
 }
 
 export interface DeckInfo {

@@ -3,8 +3,10 @@
 import {ChevronLeft, ChevronRight} from 'lucide-react'
 import {useCallback, useEffect, useRef, useState} from 'react'
 
+import {CardDetail} from './CardDetail'
 import {CardImage} from './CardImage'
-import {formatCreators, type CardArtResult, type DeckInfo} from '@/lib/sanity-image'
+import {CardList} from './CardList'
+import {formatCreators, type CardArtResult, type CardMeta} from '@/lib/sanity-image'
 
 interface CardSpreadProps {
   /** Card titles extracted from the markdown */
@@ -21,7 +23,6 @@ interface DeckGroup {
 const DEFAULT_DECK = 'smith-waite'
 
 export function CardSpread({cardTitles}: CardSpreadProps) {
-  const [allArt, setAllArt] = useState<CardArtResult[] | null>(null)
   const [decks, setDecks] = useState<DeckGroup[]>([])
   const [currentDeckIndex, setCurrentDeckIndex] = useState(0)
   const [allImagesLoaded, setAllImagesLoaded] = useState(false)
@@ -44,8 +45,6 @@ export function CardSpread({cardTitles}: CardSpreadProps) {
           setError(true)
           return
         }
-
-        setAllArt(data.cards)
 
         // Group by deck
         const byDeck = new Map<string, DeckGroup>()
@@ -84,6 +83,7 @@ export function CardSpread({cardTitles}: CardSpreadProps) {
 
   const currentDeck = decks[currentDeckIndex]
   const hasMultipleDecks = decks.length > 1
+  const cardCount = cardTitles.length
 
   const handleImageLoad = useCallback(() => {
     loadedCount.current += 1
@@ -93,14 +93,11 @@ export function CardSpread({cardTitles}: CardSpreadProps) {
   }, [currentDeck])
 
   // Reset load state when switching decks
-  const switchDeck = useCallback(
-    (newIndex: number) => {
-      loadedCount.current = 0
-      setAllImagesLoaded(false)
-      setCurrentDeckIndex(newIndex)
-    },
-    [],
-  )
+  const switchDeck = useCallback((newIndex: number) => {
+    loadedCount.current = 0
+    setAllImagesLoaded(false)
+    setCurrentDeckIndex(newIndex)
+  }, [])
 
   const navigateDeck = useCallback(
     (direction: 'prev' | 'next') => {
@@ -148,6 +145,50 @@ export function CardSpread({cardTitles}: CardSpreadProps) {
     .map((title) => currentDeck.cards.find((c) => c.cardTitle === title))
     .filter((c): c is CardArtResult => c != null)
 
+  // ─── VIEW SELECTION ───────────────────────────────────────────
+
+  // 1 card → Detail view with deck carousel and metadata
+  if (cardCount === 1 && orderedCards.length === 1) {
+    const card = orderedCards[0]
+    const deckVersions = decks.map((dg) => ({
+      slug: dg.slug,
+      name: dg.name,
+      creators: dg.creators,
+      art: dg.cards.find((c) => c.cardTitle === card.cardTitle) || dg.cards[0],
+    }))
+
+    return (
+      <CardDetail
+        deckVersions={deckVersions}
+        meta={card.cardMeta ?? null}
+        initialDeckIndex={currentDeckIndex}
+      />
+    )
+  }
+
+  // 5+ cards → List view with compact rows
+  if (cardCount > 5) {
+    const listCards = orderedCards.map((art) => ({
+      art,
+      meta: art.cardMeta ?? null,
+    }))
+
+    return (
+      <div className="my-4 flex flex-col gap-4">
+        <CardList cards={listCards} />
+
+        {/* Deck selector */}
+        <DeckSelector
+          decks={decks}
+          currentDeckIndex={currentDeckIndex}
+          onNavigate={navigateDeck}
+          onSwitch={switchDeck}
+        />
+      </div>
+    )
+  }
+
+  // 2–5 cards → Spread view (horizontal layout)
   return (
     <div className="my-4 flex flex-col items-center gap-4">
       {/* Cards */}
@@ -163,56 +204,78 @@ export function CardSpread({cardTitles}: CardSpreadProps) {
       </div>
 
       {/* Deck selector */}
-      {hasMultipleDecks && (
-        <div className="flex items-center gap-3">
-          <button
-            type="button"
-            onClick={() => navigateDeck('prev')}
-            className="rounded-full p-1 text-neutral-500 transition-colors hover:bg-neutral-800 hover:text-neutral-300"
-            aria-label="Previous deck"
-          >
-            <ChevronLeft className="h-4 w-4" />
-          </button>
+      <DeckSelector
+        decks={decks}
+        currentDeckIndex={currentDeckIndex}
+        onNavigate={navigateDeck}
+        onSwitch={switchDeck}
+      />
+    </div>
+  )
+}
 
-          <div className="flex flex-col items-center gap-0.5">
-            <span className="text-xs font-medium text-neutral-300">{currentDeck.name}</span>
-            {currentDeck.creators && (
-              <span className="text-[10px] text-neutral-500">{currentDeck.creators}</span>
-            )}
-            {/* Deck dots */}
-            <div className="mt-1 flex gap-1">
-              {decks.map((deck, i) => (
-                <button
-                  key={deck.slug}
-                  type="button"
-                  onClick={() => switchDeck(i)}
-                  className={`h-1 rounded-full transition-all ${
-                    i === currentDeckIndex ? 'w-3 bg-purple-400' : 'w-1 bg-neutral-600 hover:bg-neutral-500'
-                  }`}
-                  aria-label={`View in ${deck.name}`}
-                />
-              ))}
-            </div>
-          </div>
+// ─── Shared deck selector ────────────────────────────────────────
 
-          <button
-            type="button"
-            onClick={() => navigateDeck('next')}
-            className="rounded-full p-1 text-neutral-500 transition-colors hover:bg-neutral-800 hover:text-neutral-300"
-            aria-label="Next deck"
-          >
-            <ChevronRight className="h-4 w-4" />
-          </button>
+interface DeckSelectorProps {
+  decks: DeckGroup[]
+  currentDeckIndex: number
+  onNavigate: (dir: 'prev' | 'next') => void
+  onSwitch: (index: number) => void
+}
+
+function DeckSelector({decks, currentDeckIndex, onNavigate, onSwitch}: DeckSelectorProps) {
+  const current = decks[currentDeckIndex]
+  if (!current) return null
+
+  if (decks.length <= 1) {
+    // Single deck — just show name
+    return current.creators ? (
+      <div className="flex flex-col items-center gap-0.5">
+        <span className="text-xs font-medium text-neutral-400">{current.name}</span>
+        <span className="text-[10px] text-neutral-500">{current.creators}</span>
+      </div>
+    ) : null
+  }
+
+  return (
+    <div className="flex items-center gap-3">
+      <button
+        type="button"
+        onClick={() => onNavigate('prev')}
+        className="rounded-full p-1 text-neutral-500 transition-colors hover:bg-neutral-800 hover:text-neutral-300"
+        aria-label="Previous deck"
+      >
+        <ChevronLeft className="h-4 w-4" />
+      </button>
+
+      <div className="flex flex-col items-center gap-0.5">
+        <span className="text-xs font-medium text-neutral-300">{current.name}</span>
+        {current.creators && (
+          <span className="text-[10px] text-neutral-500">{current.creators}</span>
+        )}
+        <div className="mt-1 flex gap-1">
+          {decks.map((deck, i) => (
+            <button
+              key={deck.slug}
+              type="button"
+              onClick={() => onSwitch(i)}
+              className={`h-1 rounded-full transition-all ${
+                i === currentDeckIndex ? 'w-3 bg-purple-400' : 'w-1 bg-neutral-600 hover:bg-neutral-500'
+              }`}
+              aria-label={`View in ${deck.name}`}
+            />
+          ))}
         </div>
-      )}
+      </div>
 
-      {/* Single deck info (when only one deck has all cards) */}
-      {!hasMultipleDecks && currentDeck.creators && (
-        <div className="flex flex-col items-center gap-0.5">
-          <span className="text-xs font-medium text-neutral-400">{currentDeck.name}</span>
-          <span className="text-[10px] text-neutral-500">{currentDeck.creators}</span>
-        </div>
-      )}
+      <button
+        type="button"
+        onClick={() => onNavigate('next')}
+        className="rounded-full p-1 text-neutral-500 transition-colors hover:bg-neutral-800 hover:text-neutral-300"
+        aria-label="Next deck"
+      >
+        <ChevronRight className="h-4 w-4" />
+      </button>
     </div>
   )
 }
