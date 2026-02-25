@@ -28,14 +28,16 @@ export function CardSpread({cardTitles}: CardSpreadProps) {
   const [error, setError] = useState(false)
   const loadedCount = useRef(0)
 
+  // Stable key for the effect — prevents re-fetching on every streaming re-render
+  const titlesKey = cardTitles.join(',')
+
   // Fetch all art for these cards (all decks)
   useEffect(() => {
-    if (cardTitles.length === 0) return
+    if (!titlesKey) return
 
     const controller = new AbortController()
-    const titlesParam = cardTitles.join(',')
 
-    fetch(`/api/card-art?titles=${encodeURIComponent(titlesParam)}`, {signal: controller.signal})
+    fetch(`/api/card-art?titles=${encodeURIComponent(titlesKey)}`, {signal: controller.signal})
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
         if (!data?.cards?.length) {
@@ -66,14 +68,19 @@ export function CardSpread({cardTitles}: CardSpreadProps) {
 
         setDecks(completeDeckGroups)
 
-        // Default to Smith-Waite
+        // Default to Smith-Waite, fall back to first available
         const defaultIdx = completeDeckGroups.findIndex((g) => g.slug === DEFAULT_DECK)
         if (defaultIdx >= 0) setCurrentDeckIndex(defaultIdx)
       })
-      .catch(() => setError(true))
+      .catch((err) => {
+        // Don't set error on abort — that's just cleanup from re-render
+        if (err?.name !== 'AbortError') {
+          setError(true)
+        }
+      })
 
     return () => controller.abort()
-  }, [cardTitles])
+  }, [titlesKey]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const currentDeck = decks[currentDeckIndex]
   const hasMultipleDecks = decks.length > 1
