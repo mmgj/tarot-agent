@@ -15,11 +15,13 @@ interface CardImageProps {
   art: CardArtResult
   /** Rendered width in px */
   width?: number
+  /** If true, image fits within its parent container (max-height: 100%) */
+  contain?: boolean
   /** Callback when image is fully loaded */
   onLoad?: () => void
 }
 
-export function CardImage({art, width = 160, onLoad}: CardImageProps) {
+export function CardImage({art, width = 160, contain = false, onLoad}: CardImageProps) {
   const [loaded, setLoaded] = useState(false)
   const imgRef = useRef<HTMLImageElement>(null)
 
@@ -42,13 +44,18 @@ export function CardImage({art, width = 160, onLoad}: CardImageProps) {
     }
   }, [imgSrc]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // In contain mode, compute height from width + aspect ratio, capped by parent
+  const computedHeight = Math.round(width / aspectRatio)
+
   return (
     <div className="card-deal inline-flex flex-col items-center gap-1.5">
       <div
         className="relative overflow-hidden shadow-lg shadow-black/40"
         style={{
           width: `${width}px`,
-          aspectRatio: String(aspectRatio),
+          height: contain ? `${computedHeight}px` : undefined,
+          maxHeight: contain ? '100%' : undefined,
+          aspectRatio: contain ? undefined : String(aspectRatio),
           borderRadius: `${borderRadius}px`,
         }}
       >
@@ -75,10 +82,12 @@ export function CardImage({art, width = 160, onLoad}: CardImageProps) {
         />
       </div>
 
-      {/* Card name */}
-      <span className="max-w-[10rem] text-center font-serif text-xs font-medium tracking-wide text-neutral-300">
-        {art.cardTitle}
-      </span>
+      {/* Card name — hide in contain mode (detail view shows it separately) */}
+      {!contain && (
+        <span className="max-w-[10rem] text-center font-serif text-xs font-medium tracking-wide text-neutral-300">
+          {art.cardTitle}
+        </span>
+      )}
     </div>
   )
 }

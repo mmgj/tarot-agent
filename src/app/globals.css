@@ -88,6 +88,15 @@ body {
   animation: shimmer 3s ease-in-out infinite;
 }
 
+/* Hide scrollbar for horizontal suggestion strip */
+.scrollbar-none {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
+
 /* Scrollbar styling */
 ::-webkit-scrollbar {
   width: 6px;

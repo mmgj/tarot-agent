@@ -159,11 +159,11 @@ export function CardDetail({cached, deckVersions, meta, initialDeckIndex = 0}: C
     <div className="my-4">
       {/* Floated image + deck nav */}
       <div className="float-left mr-4 mb-3 flex flex-col items-center gap-2">
-        {/* Image area */}
+        {/* Image area — fixed size to prevent layout shift when switching decks */}
         <div
           ref={containerRef}
           className="relative overflow-hidden"
-          style={{width: '200px', minHeight: '20rem'}}
+          style={{width: '200px', height: '300px'}}
           onTouchStart={handleTouchStart}
           onTouchMove={handleTouchMove}
           onTouchEnd={handleTouchEnd}
@@ -171,7 +171,7 @@ export function CardDetail({cached, deckVersions, meta, initialDeckIndex = 0}: C
           {hasCarousel ? (
             /* ─── Swipeable carousel (Phase 2) ─── */
             <div
-              className="flex items-start justify-center"
+              className="absolute inset-0 flex items-center justify-center"
               style={{
                 transform: `translateX(${swipeOffset}px)`,
                 transition: isAnimating ? 'transform 250ms ease-out' : 'none',
@@ -180,20 +180,21 @@ export function CardDetail({cached, deckVersions, meta, initialDeckIndex = 0}: C
               {/* Previous image (off-screen left) */}
               {deckVersions[prevIndex] && (
                 <div
-                  className="absolute inset-0 flex items-start justify-center"
+                  className="absolute inset-0 flex items-center justify-center"
                   style={{transform: 'translateX(-100%)'}}
                 >
-                  <CardImage art={deckVersions[prevIndex].art} width={200} />
+                  <CardImage art={deckVersions[prevIndex].art} width={200} contain />
                 </div>
               )}
 
               {/* Current image */}
               {current && (
-                <div className="flex items-start justify-center">
+                <div className="flex items-center justify-center">
                   <CardImage
                     key={`${current.slug}-${current.art.cardTitle}`}
                     art={current.art}
                     width={200}
+                    contain
                     onLoad={handleLoad}
                   />
                 </div>
@@ -202,35 +203,42 @@ export function CardDetail({cached, deckVersions, meta, initialDeckIndex = 0}: C
               {/* Next image (off-screen right) */}
               {deckVersions[nextIndex] && (
                 <div
-                  className="absolute inset-0 flex items-start justify-center"
+                  className="absolute inset-0 flex items-center justify-center"
                   style={{transform: 'translateX(100%)'}}
                 >
-                  <CardImage art={deckVersions[nextIndex].art} width={200} />
+                  <CardImage art={deckVersions[nextIndex].art} width={200} contain />
                 </div>
               )}
             </div>
           ) : current ? (
             /* ─── Single deck image (API loaded, no carousel) ─── */
-            <div className={`transition-opacity duration-500 ${imageLoaded ? 'opacity-100' : 'opacity-0'}`}>
+            <div className={`absolute inset-0 flex items-center justify-center transition-opacity duration-500 ${imageLoaded ? 'opacity-100' : 'opacity-0'}`}>
               <CardImage
                 key={`${current.slug}-${current.art.cardTitle}`}
                 art={current.art}
                 width={200}
+                contain
                 onLoad={handleLoad}
               />
             </div>
           ) : cachedArt?.imageUrl ? (
             /* ─── Cached Smith-Waite image (Phase 1 — instant) ─── */
-            <CachedImage art={cachedArt} onLoad={handleLoad} loaded={imageLoaded} />
+            <div className="absolute inset-0 flex items-center justify-center">
+              <CachedImage art={cachedArt} onLoad={handleLoad} loaded={imageLoaded} />
+            </div>
           ) : (
             /* ─── Shimmer placeholder ─── */
             <div
-              className="relative overflow-hidden rounded-lg shadow-lg shadow-black/40"
-              style={{width: '200px', aspectRatio: '0.667'}}
+              className="absolute inset-0 flex items-center justify-center"
             >
-              <div className="shimmer absolute inset-0 bg-gradient-to-br from-neutral-800 via-neutral-700 to-neutral-800" />
-              <div className="absolute inset-0 flex items-center justify-center text-2xl text-neutral-600 opacity-40">
-                ✦
+              <div
+                className="relative overflow-hidden rounded-lg shadow-lg shadow-black/40"
+                style={{width: '200px', height: '300px'}}
+              >
+                <div className="shimmer absolute inset-0 bg-gradient-to-br from-neutral-800 via-neutral-700 to-neutral-800" />
+                <div className="absolute inset-0 flex items-center justify-center text-2xl text-neutral-600 opacity-40">
+                  ✦
+                </div>
               </div>
             </div>
           )}

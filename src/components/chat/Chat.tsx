@@ -7,12 +7,13 @@ import {
   lastAssistantMessageIsCompleteWithToolCalls,
   type UIMessage,
 } from 'ai'
-import {useEffect, useRef, useState} from 'react'
+import {useEffect, useMemo, useRef, useState} from 'react'
 
 import {ChatInput} from './ChatInput'
 import {Loader} from './Loader'
 import {Message} from './message/Message'
 import {ToolCall} from './ToolCall'
+import {generateSuggestions} from '@/lib/suggestions'
 
 function isWaitingForText(messages: UIMessage[]): boolean {
   const last = messages[messages.length - 1]
@@ -32,13 +33,6 @@ function hasActiveToolCalls(messages: UIMessage[]): boolean {
   return (last.parts ?? []).some(isToolUIPart)
 }
 
-const SUGGESTIONS = [
-  'Draw three cards for me',
-  'Tell me about The Tower',
-  'Which cards are ruled by the Moon?',
-  'Show me the Major Arcana',
-]
-
 interface ChatProps {
   debug?: boolean
 }
@@ -46,6 +40,9 @@ interface ChatProps {
 export function Chat({debug = false}: ChatProps) {
   const [input, setInput] = useState('')
   const messagesEndRef = useRef<HTMLDivElement>(null)
+
+  // Generate suggestions once on mount — stable across re-renders
+  const suggestions = useMemo(() => generateSuggestions(), [])
 
   const {messages, sendMessage, status, error, regenerate} = useChat({
     sendAutomaticallyWhen: ({messages}) => {
@@ -64,15 +61,21 @@ export function Chat({debug = false}: ChatProps) {
     setInput('')
   }
 
+  const handleSuggestion = (text: string) => {
+    sendMessage({text})
+  }
+
   const isLoading = status === 'submitted' || status === 'streaming'
   const showLoader = isLoading && isWaitingForText(messages)
   const toolCallsActive = hasActiveToolCalls(messages)
+  const hasMessages = messages.length > 0
 
   return (
     <div className="flex h-full flex-col">
       {/* Messages */}
       <div className="flex-1 overflow-y-auto p-4">
-        {messages.length === 0 ? (
+        {!hasMessages ? (
+          /* ─── Empty state: hero layout ─── */
           <div className="flex h-full flex-col items-center justify-center gap-6 text-center">
             {/* Decorative card spread */}
             <div className="flex items-end gap-2 opacity-30">
@@ -98,13 +101,11 @@ export function Chat({debug = false}: ChatProps) {
             </div>
 
             <div className="flex flex-wrap justify-center gap-2">
-              {SUGGESTIONS.map((suggestion) => (
+              {suggestions.map((suggestion) => (
                 <button
                   key={suggestion}
                   type="button"
-                  onClick={() => {
-                    sendMessage({text: suggestion})
-                  }}
+                  onClick={() => handleSuggestion(suggestion)}
                   className="rounded-full border border-neutral-700/60 bg-neutral-800/30 px-3.5 py-1.5 text-xs text-neutral-400 transition-all hover:border-purple-500/50 hover:bg-purple-950/20 hover:text-purple-300"
                 >
                   {suggestion}
@@ -113,6 +114,7 @@ export function Chat({debug = false}: ChatProps) {
             </div>
           </div>
         ) : (
+          /* ─── Message list ─── */
           <div className="space-y-4">
             {messages.map((message) => (
               <div key={message.id} className="space-y-2">
@@ -163,9 +165,27 @@ export function Chat({debug = false}: ChatProps) {
         )}
       </div>
 
-      {/* Input */}
-      <div className="border-t border-[var(--border)] p-4">
-        <ChatInput input={input} setInput={setInput} onSubmit={handleSubmit} disabled={isLoading} />
+      {/* Input area */}
+      <div className="border-t border-[var(--border)]">
+        {/* Collapsed suggestion chips — shown after first message */}
+        {hasMessages && !isLoading && (
+          <div className="flex gap-1.5 overflow-x-auto px-4 pt-2 pb-0 scrollbar-none">
+            {suggestions.map((suggestion) => (
+              <button
+                key={suggestion}
+                type="button"
+                onClick={() => handleSuggestion(suggestion)}
+                className="shrink-0 rounded-full border border-neutral-800/60 bg-neutral-900/40 px-2.5 py-1 text-[11px] text-neutral-500 transition-all hover:border-purple-500/40 hover:text-purple-400"
+              >
+                {suggestion}
+              </button>
+            ))}
+          </div>
+        )}
+
+        <div className="p-4">
+          <ChatInput input={input} setInput={setInput} onSubmit={handleSubmit} disabled={isLoading} />
+        </div>
       </div>
     </div>
   )
