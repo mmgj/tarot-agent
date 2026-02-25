@@ -1,7 +1,7 @@
-import React, {useCallback, useRef, useState} from 'react'
+import React from 'react'
 import ReactMarkdown from 'react-markdown'
 
-import {CardImage} from '@/components/chat/CardImage'
+import {CardSpread} from '@/components/chat/CardSpread'
 import {cn} from '@/lib/utils'
 
 interface TextPartProps {
@@ -9,34 +9,45 @@ interface TextPartProps {
   isUser: boolean
 }
 
-// Match a line that is ONLY markdown images: ![alt](url) ![alt](url) ...
-const IMAGE_LINE_RE = /^(?:\s*!\[([^\]]*)\]\(([^)]+)\)\s*)+$/
+// Matches a COMPLETE markdown image: ![alt](url)
+const COMPLETE_IMAGE_RE = /!\[([^\]]*)\]\(([^)]+)\)/g
 
-interface ImageRef {
-  alt: string
-  src: string
-}
+// Matches the START of an incomplete image that's still streaming:
+// ![...  or  ![alt](... — anything that looks like it's building toward an image
+const INCOMPLETE_IMAGE_RE = /!\[[^\]]*\]?\(?[^)]*$/
 
-const SINGLE_IMAGE_RE = /!\[([^\]]*)\]\(([^)]+)\)/g
-
-function parseImageLine(line: string): ImageRef[] {
-  const images: ImageRef[] = []
-  let match
-  while ((match = SINGLE_IMAGE_RE.exec(line)) !== null) {
-    images.push({alt: match[1], src: match[2]})
-  }
-  SINGLE_IMAGE_RE.lastIndex = 0
-  return images
-}
+// Match a line that is ONLY complete markdown images
+const IMAGE_ONLY_LINE_RE = /^(?:\s*!\[[^\]]*\]\([^)]+\)\s*)+$/
 
 interface Block {
   type: 'text' | 'images'
   content: string
-  images?: ImageRef[]
+  cardTitles?: string[]
 }
 
-function splitBlocks(text: string): Block[] {
-  const lines = text.split('\n')
+/**
+ * Split text into blocks, separating image-only lines from text.
+ * Incomplete image markdown at the end of the text is HELD BACK
+ * (not rendered) to prevent flicker during streaming.
+ */
+function splitBlocks(text: string): {blocks: Block[]; hasIncomplete: boolean} {
+  // Check if the text ends with an incomplete image markdown
+  const incompleteMatch = text.match(INCOMPLETE_IMAGE_RE)
+  let cleanText = text
+  let hasIncomplete = false
+
+  if (incompleteMatch) {
+    // Check it's not actually a complete image
+    const tail = incompleteMatch[0]
+    const completeInTail = tail.match(/!\[[^\]]*\]\([^)]+\)/)
+    if (!completeInTail || completeInTail[0] !== tail) {
+      // Truly incomplete — strip it from rendering
+      cleanText = text.slice(0, incompleteMatch.index)
+      hasIncomplete = true
+    }
+  }
+
+  const lines = cleanText.split('\n')
   const blocks: Block[] = []
   let textBuffer: string[] = []
 
@@ -51,51 +62,24 @@ function splitBlocks(text: string): Block[] {
   }
 
   for (const line of lines) {
-    if (IMAGE_LINE_RE.test(line.trim())) {
+    const trimmed = line.trim()
+    if (trimmed && IMAGE_ONLY_LINE_RE.test(trimmed)) {
       flushText()
-      blocks.push({
-        type: 'images',
-        content: line,
-        images: parseImageLine(line),
-      })
+      // Extract card titles from alt text
+      const titles: string[] = []
+      let match
+      const re = new RegExp(COMPLETE_IMAGE_RE.source, 'g')
+      while ((match = re.exec(trimmed)) !== null) {
+        if (match[1]) titles.push(match[1])
+      }
+      blocks.push({type: 'images', content: trimmed, cardTitles: titles})
     } else {
       textBuffer.push(line)
     }
   }
   flushText()
 
-  return blocks
-}
-
-/**
- * CardSpread buffers rendering until ALL card images have loaded.
- * This prevents layout shift as images pop in one by one.
- */
-function CardSpread({images}: {images: ImageRef[]}) {
-  const [allReady, setAllReady] = useState(false)
-  const readyCount = useRef(0)
-  const total = images.length
-
-  const handleReady = useCallback(() => {
-    readyCount.current += 1
-    if (readyCount.current >= total) {
-      setAllReady(true)
-    }
-  }, [total])
-
-  return (
-    <div
-      className={`my-4 flex flex-wrap items-start justify-center gap-5 transition-opacity duration-500 ${
-        allReady ? 'opacity-100' : 'opacity-0'
-      }`}
-      // Reserve minimum height while loading to prevent collapse
-      style={{minHeight: allReady ? undefined : '16rem'}}
-    >
-      {images.map((img, i) => (
-        <CardImage key={`${img.alt}-${i}`} alt={img.alt} onReady={handleReady} />
-      ))}
-    </div>
-  )
+  return {blocks, hasIncomplete}
 }
 
 function MarkdownBlock({text, isUser}: {text: string; isUser: boolean}) {
@@ -143,8 +127,8 @@ function MarkdownBlock({text, isUser}: {text: string; isUser: boolean}) {
             {children}
           </blockquote>
         ),
-        // Fallback for inline images that weren't extracted
-        img: ({alt = ''}) => <CardImage alt={String(alt)} />,
+        // Strip any inline images that weren't extracted — they'll be handled by CardSpread
+        img: () => null,
       }}
     >
       {text}
@@ -155,16 +139,16 @@ function MarkdownBlock({text, isUser}: {text: string; isUser: boolean}) {
 export function TextPart({text, isUser}: TextPartProps) {
   if (!text.trim()) return null
 
-  const blocks = splitBlocks(text)
+  const {blocks} = splitBlocks(text)
 
   return (
     <div className="space-y-1">
       {blocks.map((block, i) =>
-        block.type === 'images' && block.images ? (
-          <CardSpread key={i} images={block.images} />
-        ) : (
-          <MarkdownBlock key={i} text={block.content} isUser={isUser} />
-        ),
+        block.type === 'images' && block.cardTitles?.length ? (
+          <CardSpread key={`spread-${i}`} cardTitles={block.cardTitles} />
+        ) : block.type === 'text' ? (
+          <MarkdownBlock key={`text-${i}`} text={block.content} isUser={isUser} />
+        ) : null,
       )}
     </div>
   )
