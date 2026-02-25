@@ -29,6 +29,11 @@ interface Block {
  * Split text into blocks, separating image-only lines from text.
  * Incomplete image markdown at the end of the text is HELD BACK
  * (not rendered) to prevent flicker during streaming.
+ *
+ * IMPORTANT: Consecutive image-only lines are merged into a single
+ * images block. This prevents the AI streaming 22 cards across
+ * multiple lines from creating 22 separate CardSpread instances
+ * that shift between detail/spread/list views as they accumulate.
  */
 function splitBlocks(text: string): {blocks: Block[]; hasIncomplete: boolean} {
   // Check if the text ends with an incomplete image markdown
@@ -48,14 +53,14 @@ function splitBlocks(text: string): {blocks: Block[]; hasIncomplete: boolean} {
   }
 
   const lines = cleanText.split('\n')
-  const blocks: Block[] = []
+  const rawBlocks: Block[] = []
   let textBuffer: string[] = []
 
   const flushText = () => {
     if (textBuffer.length > 0) {
       const content = textBuffer.join('\n').trim()
       if (content) {
-        blocks.push({type: 'text', content})
+        rawBlocks.push({type: 'text', content})
       }
       textBuffer = []
     }
@@ -72,12 +77,24 @@ function splitBlocks(text: string): {blocks: Block[]; hasIncomplete: boolean} {
       while ((match = re.exec(trimmed)) !== null) {
         if (match[1]) titles.push(match[1])
       }
-      blocks.push({type: 'images', content: trimmed, cardTitles: titles})
+      rawBlocks.push({type: 'images', content: trimmed, cardTitles: titles})
     } else {
       textBuffer.push(line)
     }
   }
   flushText()
+
+  // Merge consecutive image blocks into one
+  const blocks: Block[] = []
+  for (const block of rawBlocks) {
+    const prev = blocks[blocks.length - 1]
+    if (block.type === 'images' && prev?.type === 'images') {
+      prev.content += '\n' + block.content
+      prev.cardTitles = [...(prev.cardTitles || []), ...(block.cardTitles || [])]
+    } else {
+      blocks.push({...block, cardTitles: block.cardTitles ? [...block.cardTitles] : undefined})
+    }
+  }
 
   return {blocks, hasIncomplete}
 }

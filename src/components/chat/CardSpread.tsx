@@ -32,11 +32,21 @@ export function CardSpread({cardTitles}: CardSpreadProps) {
   // Stable key for the effect — prevents re-fetching on every streaming re-render
   const titlesKey = cardTitles.join(',')
 
+  // Track the last fetched key to avoid redundant fetches
+  const lastFetchedKey = useRef('')
+
   // Fetch all art for these cards (all decks)
+  // Debounce by 300ms so we don't re-fetch on every streaming token.
+  // During streaming, cardTitles grows as new image lines arrive —
+  // we wait for a pause before hitting the API.
   useEffect(() => {
     if (!titlesKey) return
+    // Skip if we already fetched this exact set
+    if (titlesKey === lastFetchedKey.current) return
 
     const controller = new AbortController()
+    const timer = setTimeout(() => {
+      lastFetchedKey.current = titlesKey
 
     fetch(`/api/card-art?titles=${encodeURIComponent(titlesKey)}`, {signal: controller.signal})
       .then((r) => (r.ok ? r.json() : null))
@@ -78,7 +88,12 @@ export function CardSpread({cardTitles}: CardSpreadProps) {
         }
       })
 
-    return () => controller.abort()
+    }, 300) // debounce
+
+    return () => {
+      clearTimeout(timer)
+      controller.abort()
+    }
   }, [titlesKey]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const currentDeck = decks[currentDeckIndex]
@@ -116,8 +131,33 @@ export function CardSpread({cardTitles}: CardSpreadProps) {
 
   if (error) return null
 
-  // Show card name placeholders immediately while loading
+  // Show card name placeholders immediately while loading.
+  // Match the layout to the expected view mode so there's no jump when data arrives.
   if (!currentDeck) {
+    const isListLayout = cardCount > 5
+
+    if (isListLayout) {
+      // List-style placeholders: compact horizontal rows
+      return (
+        <div className="my-4 flex flex-col gap-2">
+          {cardTitles.map((title, i) => (
+            <div key={i} className="card-deal flex items-center gap-3 rounded-lg bg-neutral-900/50 p-2">
+              <div
+                className="relative flex-shrink-0 overflow-hidden rounded shadow-md shadow-black/30"
+                style={{width: '60px', aspectRatio: '0.667'}}
+              >
+                <div className="shimmer absolute inset-0 bg-gradient-to-br from-neutral-800 via-neutral-700 to-neutral-800" />
+              </div>
+              <span className="font-serif text-sm font-medium tracking-wide text-neutral-300">
+                {title}
+              </span>
+            </div>
+          ))}
+        </div>
+      )
+    }
+
+    // Spread-style placeholders: horizontal cards
     return (
       <div className="my-4 flex flex-wrap items-start justify-center gap-5">
         {cardTitles.map((title, i) => (
