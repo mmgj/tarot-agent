@@ -72,20 +72,20 @@ export function TextPart({text, isUser}: TextPartProps) {
           </blockquote>
         ),
         img: ({src, alt}) => (
-          <figure className="card-deal inline-flex flex-col items-center gap-2">
-            <div className="card-image overflow-hidden rounded-lg shadow-lg shadow-black/40">
+          <span className="card-deal inline-flex flex-col items-center gap-2">
+            <span className="card-image inline-block overflow-hidden rounded-lg shadow-lg shadow-black/40">
               <img
                 src={src}
                 alt={alt || 'Card image'}
                 className="h-auto w-36 object-contain sm:w-44"
               />
-            </div>
+            </span>
             {alt && alt !== 'Card image' && (
-              <figcaption className="font-serif text-xs font-medium tracking-wide text-neutral-400">
+              <span className="font-serif text-xs font-medium tracking-wide text-neutral-400">
                 {alt}
-              </figcaption>
+              </span>
             )}
-          </figure>
+          </span>
         ),
       }}
     >
