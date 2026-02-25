@@ -10,11 +10,13 @@ import {
 import {useEffect, useRef, useState} from 'react'
 
 import {ChatInput} from './ChatInput'
+import {DrawnCards} from './DrawnCards'
 import {Loader} from './Loader'
 import {Message} from './message/Message'
 import {ToolCall} from './ToolCall'
+import {warmCardCache, type CachedCard} from '@/lib/card-cache'
+import {processDrawIntent} from '@/lib/card-draw'
 import {generateSuggestions} from '@/lib/suggestions'
-import {warmCardCache} from '@/lib/card-cache'
 
 function isWaitingForText(messages: UIMessage[]): boolean {
   const last = messages[messages.length - 1]
@@ -38,9 +40,17 @@ interface ChatProps {
   debug?: boolean
 }
 
+/**
+ * Drawn cards keyed by the user message ID they're associated with.
+ * Rendered between the user message and the AI response.
+ */
+type DrawnCardsMap = Map<string, CachedCard[]>
+
 export function Chat({debug = false}: ChatProps) {
   const [input, setInput] = useState('')
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const [drawnCardsMap, setDrawnCardsMap] = useState<DrawnCardsMap>(new Map())
+  const [cacheReady, setCacheReady] = useState(false)
 
   // Generate suggestions client-side only to avoid hydration mismatch
   // (generateSuggestions uses Math.random which differs server vs client)
@@ -49,9 +59,11 @@ export function Chat({debug = false}: ChatProps) {
     setSuggestions(generateSuggestions())
   }, [])
 
-  // Warm card cache early so detail views render instantly
+  // Warm card cache early so draws and detail views work instantly
   useEffect(() => {
-    warmCardCache().catch(() => {})
+    warmCardCache()
+      .then(() => setCacheReady(true))
+      .catch(() => {})
   }, [])
 
   const {messages, sendMessage, status, error, regenerate} = useChat({
@@ -64,15 +76,55 @@ export function Chat({debug = false}: ChatProps) {
     messagesEndRef.current?.scrollIntoView({behavior: 'smooth'})
   }, [messages])
 
+  const handleSend = (text: string) => {
+    if (!text.trim()) return
+
+    // Detect draw intent and pick cards client-side
+    const drawResult = cacheReady ? processDrawIntent(text) : null
+
+    if (drawResult) {
+      // Send augmented text (with card names injected) to the AI
+      sendMessage({text: drawResult.augmentedText})
+
+      // Store drawn cards — we'll associate them with the user message
+      // once it appears in the messages array
+      // Use a pending key that we'll resolve on next render
+      setDrawnCardsMap((prev) => {
+        const next = new Map(prev)
+        next.set('__pending__', drawResult.cards)
+        return next
+      })
+    } else {
+      sendMessage({text})
+    }
+  }
+
+  // Resolve pending drawn cards to the actual user message ID
+  useEffect(() => {
+    if (!drawnCardsMap.has('__pending__')) return
+
+    // Find the latest user message
+    const lastUserMsg = [...messages].reverse().find((m) => m.role === 'user')
+    if (!lastUserMsg) return
+
+    setDrawnCardsMap((prev) => {
+      const pending = prev.get('__pending__')
+      if (!pending) return prev
+      const next = new Map(prev)
+      next.delete('__pending__')
+      next.set(lastUserMsg.id, pending)
+      return next
+    })
+  }, [messages, drawnCardsMap])
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    if (!input.trim()) return
-    sendMessage({text: input})
+    handleSend(input)
     setInput('')
   }
 
   const handleSuggestion = (text: string) => {
-    sendMessage({text})
+    handleSend(text)
   }
 
   const isLoading = status === 'submitted' || status === 'streaming'
@@ -144,6 +196,11 @@ export function Chat({debug = false}: ChatProps) {
                   ))}
 
                 <Message message={message} />
+
+                {/* Drawn cards — rendered between user message and AI response */}
+                {message.role === 'user' && drawnCardsMap.has(message.id) && (
+                  <DrawnCards cards={drawnCardsMap.get(message.id)!} />
+                )}
               </div>
             ))}
 

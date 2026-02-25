@@ -160,7 +160,7 @@ export function CardSpread({cardTitles}: CardSpreadProps) {
   // ─── LOADING: Show placeholders matching expected layout ─────
 
   if (!currentDeck) {
-    const isListLayout = cardCount > 5
+    const isListLayout = cardCount > 6
 
     if (isListLayout) {
       return (
@@ -209,9 +209,9 @@ export function CardSpread({cardTitles}: CardSpreadProps) {
     .map((title) => currentDeck.cards.find((c) => c.cardTitle === title))
     .filter((c): c is CardArtResult => c != null)
 
-  // ─── 5+ CARDS: List view with click-to-detail modal ─────────
+  // ─── 7+ CARDS: List view with click-to-detail modal ─────────
 
-  if (cardCount > 5) {
+  if (cardCount > 6) {
     const listCards = orderedCards.map((art) => ({
       art,
       meta: art.cardMeta ?? null,
@@ -235,7 +235,7 @@ export function CardSpread({cardTitles}: CardSpreadProps) {
     )
   }
 
-  // ─── 2–5 CARDS: Spread view — clickable cards ───────────────
+  // ─── 2–6 CARDS: Spread view — clickable cards ───────────────
 
   return (
     <div className="my-4 flex flex-col items-center gap-4">

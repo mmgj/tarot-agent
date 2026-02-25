@@ -4,6 +4,9 @@ import {cn} from '@/lib/utils'
 
 import {TextPart} from './TextPart'
 
+/** Strip the injected draw context from user messages for display */
+const DRAW_CONTEXT_RE = /\n\n\[The following cards were drawn[\s\S]*?\]$/
+
 interface MessageProps {
   message: UIMessage
 }
@@ -12,7 +15,10 @@ export function Message({message}: MessageProps) {
   const isUser = message.role === 'user'
   const parts = message.parts ?? []
 
-  const content = parts.filter(isTextUIPart).filter((part) => part.text.trim())
+  const content = parts
+    .filter(isTextUIPart)
+    .map((part) => ({...part, text: isUser ? part.text.replace(DRAW_CONTEXT_RE, '') : part.text}))
+    .filter((part) => part.text.trim())
 
   if (content.length === 0) return null
 

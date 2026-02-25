@@ -88,3 +88,21 @@ export async function warmCardCache(): Promise<void> {
   const cache = await getCardCache()
   resolvedCache = cache
 }
+
+/**
+ * Get all cached cards as an array. Returns empty if cache isn't warm yet.
+ * Each card appears once (by primary name only, no duplicates from alt names).
+ */
+export function getAllCards(): CachedCard[] {
+  if (!resolvedCache) return []
+  // Deduplicate — the cache has entries for alt names pointing to the same card
+  const seen = new Set<string>()
+  const cards: CachedCard[] = []
+  for (const card of resolvedCache.values()) {
+    if (!seen.has(card.id)) {
+      seen.add(card.id)
+      cards.push(card)
+    }
+  }
+  return cards
+}
