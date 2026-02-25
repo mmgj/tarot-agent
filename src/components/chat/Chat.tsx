@@ -15,8 +15,8 @@ import {Loader} from './Loader'
 import {Message} from './message/Message'
 import {ToolCall} from './ToolCall'
 import {warmCardCache, type CachedCard} from '@/lib/card-cache'
-import {processDrawIntent} from '@/lib/card-draw'
-import {generateSuggestions} from '@/lib/suggestions'
+import {drawRandomCards, processDrawIntent} from '@/lib/card-draw'
+import {generateSuggestions, type Suggestion} from '@/lib/suggestions'
 
 function isWaitingForText(messages: UIMessage[]): boolean {
   const last = messages[messages.length - 1]
@@ -54,7 +54,7 @@ export function Chat({debug = false}: ChatProps) {
 
   // Generate suggestions client-side only to avoid hydration mismatch
   // (generateSuggestions uses Math.random which differs server vs client)
-  const [suggestions, setSuggestions] = useState<string[]>([])
+  const [suggestions, setSuggestions] = useState<Suggestion[]>([])
   useEffect(() => {
     setSuggestions(generateSuggestions())
   }, [])
@@ -76,22 +76,37 @@ export function Chat({debug = false}: ChatProps) {
     messagesEndRef.current?.scrollIntoView({behavior: 'smooth'})
   }, [messages])
 
-  const handleSend = (text: string) => {
+  /**
+   * Send a message, optionally with a forced client-side draw.
+   * @param text - The user's message text
+   * @param forceDrawCount - If set, skip detection and draw this many cards
+   */
+  const handleSend = (text: string, forceDrawCount?: number) => {
     if (!text.trim()) return
 
-    // Detect draw intent and pick cards client-side
-    const drawResult = cacheReady ? processDrawIntent(text) : null
+    // Forced draw (from suggestion chips) or detected draw (from typed text)
+    let cards: CachedCard[] | null = null
+    let augmentedText: string | null = null
 
-    if (drawResult) {
-      // Send augmented text (with card names injected) to the AI
-      sendMessage({text: drawResult.augmentedText})
+    if (forceDrawCount && cacheReady) {
+      cards = drawRandomCards(forceDrawCount)
+      if (cards.length > 0) {
+        const cardNames = cards.map((c) => c.name).join(', ')
+        augmentedText = `${text}\n\n[The following cards were drawn for this reading: ${cardNames}. These cards were randomly selected — provide your reading for exactly these cards. Do NOT draw different cards or use tools to select cards. Do NOT include image markdown (![...](url)) for these cards — they are already displayed to the user. Focus entirely on your interpretation.]`
+      }
+    } else if (cacheReady) {
+      const drawResult = processDrawIntent(text)
+      if (drawResult) {
+        cards = drawResult.cards
+        augmentedText = drawResult.augmentedText
+      }
+    }
 
-      // Store drawn cards — we'll associate them with the user message
-      // once it appears in the messages array
-      // Use a pending key that we'll resolve on next render
+    if (cards && augmentedText) {
+      sendMessage({text: augmentedText})
       setDrawnCardsMap((prev) => {
         const next = new Map(prev)
-        next.set('__pending__', drawResult.cards)
+        next.set('__pending__', cards!)
         return next
       })
     } else {
@@ -123,8 +138,8 @@ export function Chat({debug = false}: ChatProps) {
     setInput('')
   }
 
-  const handleSuggestion = (text: string) => {
-    handleSend(text)
+  const handleSuggestion = (suggestion: Suggestion) => {
+    handleSend(suggestion.label, suggestion.drawCount)
   }
 
   const isLoading = status === 'submitted' || status === 'streaming'
@@ -165,12 +180,12 @@ export function Chat({debug = false}: ChatProps) {
             <div className="flex flex-wrap justify-center gap-2">
               {suggestions.map((suggestion) => (
                 <button
-                  key={suggestion}
+                  key={suggestion.label}
                   type="button"
                   onClick={() => handleSuggestion(suggestion)}
                   className="rounded-full border border-neutral-700/60 bg-neutral-800/30 px-3.5 py-1.5 text-xs text-neutral-400 transition-all hover:border-purple-500/50 hover:bg-purple-950/20 hover:text-purple-300"
                 >
-                  {suggestion}
+                  {suggestion.label}
                 </button>
               ))}
             </div>
@@ -239,12 +254,12 @@ export function Chat({debug = false}: ChatProps) {
           <div className="flex gap-1.5 overflow-x-auto px-4 pt-2 pb-0 scrollbar-none">
             {suggestions.map((suggestion) => (
               <button
-                key={suggestion}
+                key={suggestion.label}
                 type="button"
                 onClick={() => handleSuggestion(suggestion)}
                 className="shrink-0 rounded-full border border-neutral-800/60 bg-neutral-900/40 px-2.5 py-1 text-[11px] text-neutral-500 transition-all hover:border-purple-500/40 hover:text-purple-400"
               >
-                {suggestion}
+                {suggestion.label}
               </button>
             ))}
           </div>

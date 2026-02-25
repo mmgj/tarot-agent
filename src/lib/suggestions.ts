@@ -22,8 +22,15 @@ function pickRandom<T>(arr: T[], count: number): T[] {
   return shuffled.slice(0, count)
 }
 
+export interface Suggestion {
+  /** Display text on the chip */
+  label: string
+  /** If set, this is a client-side draw — pick this many random cards */
+  drawCount?: number
+}
+
 /** Generate a set of suggestion chips. Call once on mount for stable values. */
-export function generateSuggestions(): string[] {
+export function generateSuggestions(): Suggestion[] {
   // Pick a random suit or major arcana for the "list all" suggestion
   const suitOrMajor = Math.random() < 0.3
     ? MAJOR_ARCANA
@@ -33,9 +40,10 @@ export function generateSuggestions(): string[] {
   const prop = pickRandom(GROUPABLE_PROPERTIES, 1)[0]
 
   return [
-    'Draw a random card',
-    'Draw 3 cards for me',
-    `List all ${suitOrMajor} cards`,
-    `Which cards have ${prop.query} in common?`,
+    {label: 'Draw a random card', drawCount: 1},
+    {label: 'Draw 3 cards', drawCount: 3},
+    {label: 'Draw 5 cards', drawCount: 5},
+    {label: `List all ${suitOrMajor} cards`},
+    {label: `Which cards have ${prop.query} in common?`},
   ]
 }
