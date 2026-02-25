@@ -36,13 +36,16 @@ interface CardDetailProps {
   initialDeckIndex?: number
 }
 
-// ─── Helpers ────────────────────────────────────────────────────
+// ─── Constants ──────────────────────────────────────────────────
+
+/** Fixed carousel container — all card art scales to fit within this */
+const CAROUSEL_WIDTH = 200
+const CAROUSEL_HEIGHT = 300
+const SWIPE_THRESHOLD = 50
 
 function capitalize(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1)
 }
-
-const SWIPE_THRESHOLD = 50
 
 // ─── Component ──────────────────────────────────────────────────
 
@@ -58,7 +61,6 @@ export function CardDetail({cardTitle, cached, deckVersions, meta, initialDeckIn
   const hasCarousel = deckVersions && deckVersions.length > 1
   const current = deckVersions?.[deckIndex]
 
-  // Use cached Smith-Waite data for instant render, upgrade when API data arrives
   const displayMeta = meta || cached?.meta || null
   const displayTitle = displayMeta?.names?.[0] || cached?.name || cardTitle
   const cachedArt = cached?.smithWaite
@@ -76,7 +78,7 @@ export function CardDetail({cardTitle, cached, deckVersions, meta, initialDeckIn
     setDeckIndex(newIndex)
   }, [])
 
-  // ─── Swipe handlers (adapted from tarotify) ─────────────────
+  // ─── Swipe handlers ─────────────────────────────────────────
 
   const handleTouchStart = useCallback(
     (e: React.TouchEvent) => {
@@ -98,12 +100,10 @@ export function CardDetail({cardTitle, cached, deckVersions, meta, initialDeckIn
   const handleTouchEnd = useCallback(() => {
     if (touchStartX.current === null || !hasCarousel || !deckVersions) return
 
-    const containerWidth = containerRef.current?.offsetWidth || 300
-
     if (Math.abs(swipeOffset) > SWIPE_THRESHOLD) {
       setIsAnimating(true)
       const goNext = swipeOffset < 0
-      setSwipeOffset(goNext ? -containerWidth : containerWidth)
+      setSwipeOffset(goNext ? -CAROUSEL_WIDTH : CAROUSEL_WIDTH)
       setTimeout(() => {
         setDeckIndex((prev) =>
           goNext
@@ -123,9 +123,8 @@ export function CardDetail({cardTitle, cached, deckVersions, meta, initialDeckIn
   const navigate = useCallback(
     (dir: 'prev' | 'next') => {
       if (isAnimating || !hasCarousel || !deckVersions) return
-      const containerWidth = containerRef.current?.offsetWidth || 300
       setIsAnimating(true)
-      setSwipeOffset(dir === 'next' ? -containerWidth : containerWidth)
+      setSwipeOffset(dir === 'next' ? -CAROUSEL_WIDTH : CAROUSEL_WIDTH)
       setTimeout(() => {
         setDeckIndex((prev) =>
           dir === 'next'
@@ -162,19 +161,19 @@ export function CardDetail({cardTitle, cached, deckVersions, meta, initialDeckIn
     <div className="my-4">
       {/* Floated image + deck nav */}
       <div className="float-left mr-4 mb-3 flex flex-col items-center gap-2">
-        {/* Image area — fixed size to prevent layout shift when switching decks */}
+        {/* Fixed-size carousel container — card art scales to fit via object-contain */}
         <div
           ref={containerRef}
-          className="relative overflow-hidden"
-          style={{width: '200px', height: '300px'}}
+          className="relative overflow-hidden bg-neutral-900/50"
+          style={{width: `${CAROUSEL_WIDTH}px`, height: `${CAROUSEL_HEIGHT}px`}}
           onTouchStart={handleTouchStart}
           onTouchMove={handleTouchMove}
           onTouchEnd={handleTouchEnd}
         >
           {hasCarousel ? (
-            /* ─── Swipeable carousel (Phase 2) ─── */
+            /* ─── Swipeable carousel ─── */
             <div
-              className="absolute inset-0 flex items-center justify-center"
+              className="absolute inset-0"
               style={{
                 transform: `translateX(${swipeOffset}px)`,
                 transition: isAnimating ? 'transform 250ms ease-out' : 'none',
@@ -186,17 +185,17 @@ export function CardDetail({cardTitle, cached, deckVersions, meta, initialDeckIn
                   className="absolute inset-0 flex items-center justify-center"
                   style={{transform: 'translateX(-100%)'}}
                 >
-                  <CardImage art={deckVersions[prevIndex].art} width={200} contain />
+                  <CardImage art={deckVersions[prevIndex].art} width={CAROUSEL_WIDTH} contain />
                 </div>
               )}
 
               {/* Current image */}
               {current && (
-                <div className="flex items-center justify-center">
+                <div className="absolute inset-0 flex items-center justify-center">
                   <CardImage
                     key={`${current.slug}-${current.art.cardTitle}`}
                     art={current.art}
-                    width={200}
+                    width={CAROUSEL_WIDTH}
                     contain
                     onLoad={handleLoad}
                   />
@@ -209,37 +208,32 @@ export function CardDetail({cardTitle, cached, deckVersions, meta, initialDeckIn
                   className="absolute inset-0 flex items-center justify-center"
                   style={{transform: 'translateX(100%)'}}
                 >
-                  <CardImage art={deckVersions[nextIndex].art} width={200} contain />
+                  <CardImage art={deckVersions[nextIndex].art} width={CAROUSEL_WIDTH} contain />
                 </div>
               )}
             </div>
           ) : current ? (
-            /* ─── Single deck image (API loaded, no carousel) ─── */
+            /* ─── Single deck image ─── */
             <div className={`absolute inset-0 flex items-center justify-center transition-opacity duration-500 ${imageLoaded ? 'opacity-100' : 'opacity-0'}`}>
               <CardImage
                 key={`${current.slug}-${current.art.cardTitle}`}
                 art={current.art}
-                width={200}
+                width={CAROUSEL_WIDTH}
                 contain
                 onLoad={handleLoad}
               />
             </div>
           ) : cachedArt?.imageUrl ? (
-            /* ─── Cached Smith-Waite image (Phase 1 — instant) ─── */
+            /* ─── Cached Smith-Waite image (instant) ─── */
             <div className="absolute inset-0 flex items-center justify-center">
-              <CachedImage art={cachedArt} onLoad={handleLoad} loaded={imageLoaded} />
+              <CachedImage art={cachedArt} containerWidth={CAROUSEL_WIDTH} containerHeight={CAROUSEL_HEIGHT} onLoad={handleLoad} loaded={imageLoaded} />
             </div>
           ) : (
             /* ─── Shimmer placeholder ─── */
             <div className="absolute inset-0 flex items-center justify-center">
-              <div
-                className="relative overflow-hidden rounded-lg shadow-lg shadow-black/40"
-                style={{width: '200px', height: '300px'}}
-              >
-                <div className="shimmer absolute inset-0 bg-gradient-to-br from-neutral-800 via-neutral-700 to-neutral-800" />
-                <div className="absolute inset-0 flex items-center justify-center text-2xl text-neutral-600 opacity-40">
-                  ✦
-                </div>
+              <div className="shimmer absolute inset-0 bg-gradient-to-br from-neutral-800 via-neutral-700 to-neutral-800" />
+              <div className="absolute inset-0 flex items-center justify-center text-2xl text-neutral-600 opacity-40">
+                ✦
               </div>
             </div>
           )}
@@ -356,50 +350,37 @@ export function CardDetail({cardTitle, cached, deckVersions, meta, initialDeckIn
 }
 
 // ─── Cached image renderer ──────────────────────────────────────
+// Uses object-contain within the fixed carousel container.
 
 interface CachedImageProps {
   art: NonNullable<CachedCard['smithWaite']>
+  containerWidth: number
+  containerHeight: number
   onLoad: () => void
   loaded: boolean
 }
 
-function CachedImage({art, onLoad, loaded}: CachedImageProps) {
-  const width = 200
-  const aspectRatio = art.dimensions
-    ? getCroppedAspectRatio(
-        art.dimensions.width,
-        art.dimensions.height,
-        art.crop as ImageCrop | null,
-      )
-    : 0.667
-  const borderRadius = getScaledBorderRadius(art.cornerRounding || 0, width)
+function CachedImage({art, containerWidth, containerHeight, onLoad, loaded}: CachedImageProps) {
+  const borderRadius = getScaledBorderRadius(art.cornerRounding || 0, containerWidth)
   const imageUrl = buildImageUrl(art.imageUrl, {
-    width: width * 2,
+    width: containerWidth * 2,
     crop: art.crop as ImageCrop | null,
     dimensions: art.dimensions,
   })
 
-  // Cap height to fit in the 300px container
-  const computedHeight = Math.min(Math.round(width / aspectRatio), 300)
-
   return (
-    <div
-      className={`relative overflow-hidden shadow-lg shadow-black/40 transition-opacity duration-500 ${
+    <img
+      src={imageUrl}
+      alt=""
+      className={`max-h-full max-w-full object-contain transition-opacity duration-500 ${
         loaded ? 'opacity-100' : 'opacity-0'
       }`}
       style={{
-        width: `${width}px`,
-        height: `${computedHeight}px`,
         borderRadius: `${borderRadius}px`,
+        maxWidth: `${containerWidth}px`,
+        maxHeight: `${containerHeight}px`,
       }}
-    >
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img
-        src={imageUrl}
-        alt=""
-        className="h-full w-full object-cover"
-        onLoad={onLoad}
-      />
-    </div>
+      onLoad={onLoad}
+    />
   )
 }

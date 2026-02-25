@@ -13,9 +13,13 @@ import {
 interface CardImageProps {
   /** Card art data from the API */
   art: CardArtResult
-  /** Rendered width in px */
+  /** Rendered width in px (used for standalone cards in spread view) */
   width?: number
-  /** If true, image fits within its parent container (max-height: 100%) */
+  /**
+   * If true, image scales to fit within its parent container (object-contain).
+   * The image preserves its real aspect ratio from Sanity dimensions/crop.
+   * Used in the carousel where the container is fixed-size.
+   */
   contain?: boolean
   /** Callback when image is fully loaded */
   onLoad?: () => void
@@ -27,7 +31,6 @@ export function CardImage({art, width = 160, contain = false, onLoad}: CardImage
 
   const aspectRatio = getCroppedAspectRatio(art)
   const borderRadius = getScaledBorderRadius(art.cornerRounding, width)
-  const hotspotPos = getHotspotPosition(art.hotspot)
   const imgSrc = buildImageUrl(art, width * 2) // 2x for retina
 
   // Preload image
@@ -44,18 +47,34 @@ export function CardImage({art, width = 160, contain = false, onLoad}: CardImage
     }
   }, [imgSrc]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // In contain mode, compute height from width + aspect ratio, capped by parent
-  const computedHeight = Math.round(width / aspectRatio)
+  // ─── Contain mode: image fills parent via object-contain ────
+  // The parent container is fixed-size (e.g., 200x300 in carousel).
+  // The image scales down to fit, preserving its real aspect ratio.
+  // No cropping, no layout shift.
+  if (contain) {
+    return (
+      <img
+        ref={imgRef}
+        src={imgSrc}
+        alt={art.cardTitle}
+        className={`h-full w-full object-contain transition-opacity duration-500 ${
+          loaded ? 'opacity-100' : 'opacity-0'
+        }`}
+        style={{borderRadius: `${borderRadius}px`}}
+        loading="eager"
+      />
+    )
+  }
 
+  // ─── Standalone mode: card sizes itself from its own dimensions ──
+  // Used in spread view (2-5 cards) and list view rows.
   return (
     <div className="card-deal inline-flex flex-col items-center gap-1.5">
       <div
         className="relative overflow-hidden shadow-lg shadow-black/40"
         style={{
           width: `${width}px`,
-          height: contain ? `${computedHeight}px` : undefined,
-          maxHeight: contain ? '100%' : undefined,
-          aspectRatio: contain ? undefined : String(aspectRatio),
+          aspectRatio: String(aspectRatio),
           borderRadius: `${borderRadius}px`,
         }}
       >
@@ -69,7 +88,7 @@ export function CardImage({art, width = 160, contain = false, onLoad}: CardImage
           </div>
         </div>
 
-        {/* Actual image */}
+        {/* Actual image — object-cover is fine here since the container matches the card's own aspect ratio */}
         <img
           ref={imgRef}
           src={imgSrc}
@@ -77,17 +96,15 @@ export function CardImage({art, width = 160, contain = false, onLoad}: CardImage
           className={`absolute inset-0 h-full w-full object-cover transition-opacity duration-500 ${
             loaded ? 'opacity-100' : 'opacity-0'
           }`}
-          style={{objectPosition: hotspotPos}}
+          style={{objectPosition: getHotspotPosition(art.hotspot)}}
           loading="eager"
         />
       </div>
 
-      {/* Card name — hide in contain mode (detail view shows it separately) */}
-      {!contain && (
-        <span className="max-w-[10rem] text-center font-serif text-xs font-medium tracking-wide text-neutral-300">
-          {art.cardTitle}
-        </span>
-      )}
+      {/* Card name */}
+      <span className="max-w-[10rem] text-center font-serif text-xs font-medium tracking-wide text-neutral-300">
+        {art.cardTitle}
+      </span>
     </div>
   )
 }
