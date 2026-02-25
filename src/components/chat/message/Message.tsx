@@ -23,7 +23,7 @@ export function Message({message}: MessageProps) {
           'space-y-3 rounded-2xl px-4 py-3 text-sm',
           isUser
             ? 'max-w-[85%] bg-purple-600/90 text-white'
-            : 'max-w-[95%] border border-[var(--border)] bg-[var(--surface)] text-neutral-200',
+            : 'w-full border border-[var(--border)] bg-[var(--surface)] text-neutral-200',
         )}
       >
         {content.map((part, i) => (

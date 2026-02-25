@@ -78,23 +78,9 @@ body {
   animation: fadeIn 0.3s ease-out both;
 }
 
-/* Loader pulse animation */
-@keyframes loaderPulse {
-  0%, 100% { transform: scale(1); opacity: 0.3; }
-  50% { transform: scale(1.8); opacity: 0.08; }
-}
-
-@keyframes loaderPulseInner {
-  0%, 100% { transform: scale(1); opacity: 0.8; }
-  50% { transform: scale(1.2); opacity: 1; }
-}
-
+/* Loader pulse — slow, calm */
 .loader-pulse {
-  animation: loaderPulse 2s ease-in-out infinite;
-}
-
-.loader-pulse-inner {
-  animation: loaderPulseInner 2s ease-in-out infinite;
+  animation: shimmer 3s ease-in-out infinite;
 }
 
 /* Scrollbar styling */
